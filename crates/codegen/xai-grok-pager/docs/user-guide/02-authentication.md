@@ -4,32 +4,30 @@ Grok supports several authentication methods, including interactive browser logi
 
 ---
 
-## Browser Login (Default)
+## Provider Login
 
-On first launch, Grok opens your browser to authenticate with grok.com:
+oh-my-grok starts without requiring a provider. From the TUI, choose the
+provider you want to authenticate:
 
 ```bash
-grok
+/login xai
+/login chatgpt
 ```
 
-Grok stores credentials in `~/.grok/auth.json` and reuses them across sessions. Grok refreshes access tokens automatically in the background. When a token can't be refreshed, Grok prompts you to sign in again. Credentials without a server-provided expiry fall back to a 30-day lifetime.
+`/login xai` uses the stock X account browser flow and stores its session in
+`~/.oh-my-grok/auth.json`. `/login chatgpt` uses ChatGPT OAuth and stores its
+session separately in `~/.oh-my-grok/openai-auth.json`. The model picker only
+shows models backed by providers that are currently configured.
 
 ### Re-authenticate
 
-To switch accounts or resolve an authentication problem, run:
+To switch accounts or resolve an authentication problem, run the matching
+provider command again:
 
 ```bash
-grok login
+/login xai
+/login chatgpt
 ```
-
-Running `grok login` starts the sign-in flow again, replacing your cached session. By default, it opens your browser and signs in through SpaceXAI OAuth at `auth.x.ai`. Pass a flag to select a different flow:
-
-| Flag | Description |
-|------|-------------|
-| `--oauth` | Sign in through SpaceXAI OAuth at `auth.x.ai`. This is the default, so the flag is optional. |
-| `--device-auth` (alias `--device-code`) | Sign in with the device-code flow for headless or remote environments. |
-
-To sign out, run `grok logout`. It takes no flags and clears your cached credentials.
 
 ---
 

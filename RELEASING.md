@@ -25,6 +25,11 @@ The tag version is injected at compile time with `GROK_VERSION`; inherited
 crate versions do not need to be rewritten for each fork release. Distribution
 builds use the workspace's hardened `release-dist` profile and feature.
 
+The fork version is deliberately separate from the version advertised to xAI
+services. Keep `xai_grok_version::XAI_PROTOCOL_VERSION` aligned with the
+current stock Grok CLI when preparing a release; `GROK_UPSTREAM_VERSION` can
+override it for a one-off compatibility build.
+
 ## Installation and updates
 
 The stable installation URL is:

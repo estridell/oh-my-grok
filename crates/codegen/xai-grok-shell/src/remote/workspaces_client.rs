@@ -103,7 +103,10 @@ impl WorkspacesClient {
                 self.auth.grok_com_config().token_header.clone(),
             )
             .header("x-userid", &auth.user_id)
-            .header("x-grok-client-version", xai_grok_version::VERSION)
+            .header(
+                "x-grok-client-version",
+                xai_grok_version::XAI_PROTOCOL_VERSION,
+            )
             .header(
                 "x-grok-client-identifier",
                 crate::http::process_client_identifier(),

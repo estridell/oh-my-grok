@@ -40,6 +40,50 @@ const DEFAULT_CLIENT_IDENTIFIER: &str = "grok-shell";
 const AGENT_PRODUCT: &str = "grok-shell";
 const ANTHROPIC_DEFAULT_MAX_TOKENS: u32 = 128_000;
 
+/// ChatGPT's Codex backend accepts system guidance through top-level
+/// `instructions`, not system-role input messages. Keep the normal Responses
+/// shape for every other backend and adapt only at the final Codex wire edge.
+fn adapt_codex_responses_body(body: &mut serde_json::Value) {
+    let Some(input) = body
+        .get_mut("input")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+
+    let mut instructions = Vec::new();
+    input.retain(|item| {
+        if item.get("role").and_then(serde_json::Value::as_str) != Some("system") {
+            return true;
+        }
+        if let Some(text) = item.get("content").and_then(serde_json::Value::as_str) {
+            if !text.is_empty() {
+                instructions.push(text.to_string());
+            }
+        } else if let Some(parts) = item.get("content").and_then(serde_json::Value::as_array) {
+            instructions.extend(parts.iter().filter_map(|part| {
+                part.get("text")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|text| !text.is_empty())
+                    .map(str::to_string)
+            }));
+        }
+        false
+    });
+
+    if instructions.is_empty() {
+        return;
+    }
+    if let Some(existing) = body
+        .get("instructions")
+        .and_then(serde_json::Value::as_str)
+        .filter(|text| !text.is_empty())
+    {
+        instructions.insert(0, existing.to_string());
+    }
+    body["instructions"] = serde_json::Value::String(instructions.join("\n\n"));
+}
+
 /// Per-request `x-grok-*` headers. Optional fields are skipped when empty/`None`.
 struct GrokRequestHeaders<'a> {
     conv_id: &'a str,
@@ -349,7 +393,7 @@ impl PlatformInfo {
 }
 
 fn agent_version() -> String {
-    xai_grok_version::VERSION.to_string()
+    xai_grok_version::XAI_PROTOCOL_VERSION.to_string()
 }
 
 /// Render a User-Agent string for the given origin client.
@@ -1147,6 +1191,9 @@ impl SamplingClient {
         // it in post-serialize. This is the last surviving piece of the
         // old raw_output machinery.
         xai_grok_sampling_types::patch_reasoning_text_types(&mut request_body);
+        if matches!(self.defaults.api_backend, ApiBackend::CodexResponses) {
+            adapt_codex_responses_body(&mut request_body);
+        }
         let http_request = self.post(self.endpoint("responses"));
         let http_request = if matches!(self.defaults.api_backend, ApiBackend::CodexResponses) {
             http_request
@@ -1296,6 +1343,9 @@ impl SamplingClient {
             }
         }
         xai_grok_sampling_types::patch_reasoning_text_types(&mut request_body);
+        if matches!(self.defaults.api_backend, ApiBackend::CodexResponses) {
+            adapt_codex_responses_body(&mut request_body);
+        }
         // Fresh per attempt so signals never leak across retries; `None`
         // (check disabled) sends no header and does no peek work per event.
         let doom_loop = self
@@ -2025,6 +2075,36 @@ mod tests {
     use super::*;
     use indexmap::IndexMap;
     use xai_grok_sampling_types::types::ChatRequestMessage;
+
+    #[test]
+    fn codex_moves_system_messages_to_top_level_instructions() {
+        let mut body = serde_json::json!({
+            "instructions": "existing",
+            "input": [
+                {"type": "message", "role": "system", "content": "first"},
+                {"type": "message", "role": "user", "content": "hello"},
+                {"type": "message", "role": "system", "content": [{"type": "input_text", "text": "second"}]}
+            ]
+        });
+
+        adapt_codex_responses_body(&mut body);
+
+        assert_eq!(body["instructions"], "existing\n\nfirst\n\nsecond");
+        assert_eq!(body["input"].as_array().unwrap().len(), 1);
+        assert_eq!(body["input"][0]["role"], "user");
+    }
+
+    #[test]
+    fn codex_body_without_system_messages_is_unchanged() {
+        let mut body = serde_json::json!({
+            "input": [{"type": "message", "role": "user", "content": "hello"}]
+        });
+        let expected = body.clone();
+
+        adapt_codex_responses_body(&mut body);
+
+        assert_eq!(body, expected);
+    }
 
     fn minimal_config() -> SamplerConfig {
         SamplerConfig {

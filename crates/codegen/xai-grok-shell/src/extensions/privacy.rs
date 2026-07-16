@@ -52,7 +52,10 @@ async fn handle_set(agent: &MvpAgent, args: &acp::ExtRequest) -> ExtResult {
     let resp = client
         .put(&url)
         .header("X-XAI-Token-Auth", &token_header)
-        .header("x-grok-client-version", xai_grok_version::VERSION)
+        .header(
+            "x-grok-client-version",
+            xai_grok_version::XAI_PROTOCOL_VERSION,
+        )
         .header(
             crate::http::CLIENT_MODE_HEADER,
             crate::http::process_client_mode(),

@@ -525,6 +525,7 @@ impl acp::Agent for MvpAgent {
                     error
                 })?;
                 self.set_auth_method(arguments.method_id.clone());
+                self.models_manager.on_auth_changed().await;
                 emit_login_span(true, crate::auth::chatgpt::AUTH_METHOD_ID, None, None);
                 Ok(self.auth_response_with_meta())
             }

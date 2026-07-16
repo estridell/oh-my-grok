@@ -140,7 +140,10 @@ impl EmbeddingProvider for ApiEmbeddingProvider {
                     .post(format!("{}/embeddings", self.api_base))
                     .json(&body_json)
                     .header("X-XAI-Token-Auth", "xai-grok-cli")
-                    .header("x-grok-client-version", xai_grok_version::VERSION);
+                    .header(
+                        "x-grok-client-version",
+                        xai_grok_version::XAI_PROTOCOL_VERSION,
+                    );
 
                 let req = match request.build() {
                     Ok(r) => r,

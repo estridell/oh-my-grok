@@ -24,7 +24,10 @@ fn add_cli_chat_proxy_headers_blocking(
         .header("Authorization", format!("Bearer {}", &auth.key))
         .header("X-XAI-Token-Auth", GrokComConfig::default().token_header)
         .header("x-userid", &auth.user_id)
-        .header("x-grok-client-version", xai_grok_version::VERSION);
+        .header(
+            "x-grok-client-version",
+            xai_grok_version::XAI_PROTOCOL_VERSION,
+        );
     if let Some(email) = &auth.email {
         builder = builder.header("x-email", email);
     }
@@ -61,9 +64,10 @@ async fn add_bundle_fetch_headers(
     );
     credentials.deployment_key = deployment_key.map(str::to_owned);
     credentials.alpha_test_key = alpha_test_key.map(str::to_owned);
-    let mut builder = credentials
-        .apply(builder, url)
-        .header("x-grok-client-version", xai_grok_version::VERSION);
+    let mut builder = credentials.apply(builder, url).header(
+        "x-grok-client-version",
+        xai_grok_version::XAI_PROTOCOL_VERSION,
+    );
     if deployment_key.is_none()
         && let Some(auth) = &resolved_auth
     {
@@ -166,7 +170,10 @@ async fn fetch_bundle_inner(
     let mut request = client
         .get(&archive_url)
         .timeout(std::time::Duration::from_secs(30))
-        .header("x-grok-client-version", xai_grok_version::VERSION)
+        .header(
+            "x-grok-client-version",
+            xai_grok_version::XAI_PROTOCOL_VERSION,
+        )
         .header(
             crate::http::CLIENT_MODE_HEADER,
             crate::http::process_client_mode(),
@@ -423,7 +430,7 @@ impl BackendClient {
         );
         headers.insert(
             "x-grok-client-version",
-            HeaderValue::from_static(xai_grok_version::VERSION),
+            HeaderValue::from_static(xai_grok_version::XAI_PROTOCOL_VERSION),
         );
         Ok(headers)
     }
@@ -622,7 +629,10 @@ pub async fn fetch_login_device_flow(cli_chat_proxy_base_url: &str) -> Option<bo
         .get(&url)
         .timeout(std::time::Duration::from_millis(1500))
         .header("x-grok-agent-id", agent_id)
-        .header("x-grok-client-version", xai_grok_version::VERSION)
+        .header(
+            "x-grok-client-version",
+            xai_grok_version::XAI_PROTOCOL_VERSION,
+        )
         .header(
             "x-grok-client-identifier",
             crate::http::process_client_identifier(),
@@ -744,7 +754,10 @@ pub(crate) fn fetch_models_blocking(
                 .header("Authorization", format!("Bearer {}", &auth.key))
                 .header("X-XAI-Token-Auth", "xai-grok-cli")
                 .header("x-userid", &auth.user_id)
-                .header("x-grok-client-version", xai_grok_version::VERSION)
+                .header(
+                    "x-grok-client-version",
+                    xai_grok_version::XAI_PROTOCOL_VERSION,
+                )
                 .header(
                     crate::http::CLIENT_MODE_HEADER,
                     crate::http::process_client_mode(),

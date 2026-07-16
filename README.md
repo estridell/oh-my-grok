@@ -51,7 +51,7 @@ curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/inst
 To install a specific version, pass it as the first script argument:
 
 ```sh
-curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash -s 0.1.0
+curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash -s 0.1.1
 ```
 
 The installer verifies the release checksum, smoke-tests the binary, and
@@ -80,7 +80,8 @@ cargo check -p xai-grok-pager-bin            # fast validation
 
 The primary binary is `omg`, and the long-name alias is `oh-my-grok`. State is
 stored in `~/.oh-my-grok`; `OH_MY_GROK_HOME` overrides that path and the legacy
-`GROK_HOME` variable remains supported. On first launch it opens your browser to authenticate — see the
+`GROK_HOME` variable remains supported. The TUI starts without requiring a
+provider; use `/login xai` for X or `/login chatgpt` for ChatGPT OAuth. See the
 [authentication guide](crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md).
 
 ## Documentation
