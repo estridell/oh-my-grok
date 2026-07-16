@@ -87,7 +87,7 @@ async fn minimal_slash_switches_from_fullscreen() {
         "main screen should be cleared on /minimal relaunch; leftover reopen text:\n{screen}"
     );
     assert!(
-        screen.contains("Grok Build") || harness.full_text().contains("Grok Build"),
+        screen.contains("OMG") || harness.full_text().contains("OMG"),
         "welcome card should re-anchor at top after /minimal relaunch\nscreen:\n{screen}"
     );
 

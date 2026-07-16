@@ -1,5 +1,5 @@
 #
-# Grok CLI installer for PowerShell — https://x.ai/cli/install.ps1
+# Disabled upstream installer retained for source provenance.
 #
 # Auth: GROK_DEPLOYMENT_KEY env var (takes precedence) or ~/.grok/auth.json from `grok login`.
 # Env: GROK_CHANNEL (stable|alpha|enterprise, default: stable), GROK_BIN_DIR, GROK_PROXY_URL
@@ -16,7 +16,7 @@ param(
     [string]$Version
 )
 
-Write-Error "The oh-my-grok PowerShell installer is disabled in v1. Use Linux or macOS with install.sh."
+Write-Error "The OMG PowerShell installer is disabled in v1. Use Linux or macOS with install.sh."
 exit 1
 
 $ErrorActionPreference = 'Stop'
@@ -183,9 +183,9 @@ if ($Version) {
 }
 
 if ($AuthSource) {
-    Write-Host "Installing Grok $resolvedVersion ($platform, $AuthSource)..." -ForegroundColor Cyan
+    Write-Host "Installing OMG $resolvedVersion ($platform, $AuthSource)..." -ForegroundColor Cyan
 } else {
-    Write-Host "Installing Grok $resolvedVersion ($platform)..." -ForegroundColor Cyan
+    Write-Host "Installing OMG $resolvedVersion ($platform)..." -ForegroundColor Cyan
 }
 
 # --- Download binary ---
@@ -317,7 +317,7 @@ if ($env:GROK_DEPLOYMENT_KEY) {
     }
 }
 
-Write-Host "Grok $resolvedVersion installed to $BinDir\grok.exe" -ForegroundColor Green
+Write-Host "OMG $resolvedVersion installed to $BinDir\grok.exe" -ForegroundColor Green
 
 # --- Ensure grok is on PATH ---
 

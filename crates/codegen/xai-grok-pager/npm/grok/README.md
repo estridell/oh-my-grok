@@ -1,61 +1,41 @@
-# Grok
+# OMG
 
-Bring Grok into your terminal. Fast, flicker-free CLI built for plans, subagents, and parallel work.
-
-**[Homepage](https://x.ai/cli)** | **[Documentation](https://docs.x.ai/build/overview)**
+OMG is the CLI for
+[oh-my-grok](https://github.com/estridell/oh-my-grok), an independent,
+unofficial multi-provider fork of Grok Build. It is not published, maintained,
+endorsed, or supported by xAI or SpaceXAI.
 
 ## Install
 
-```bash
-curl -fsSL https://x.ai/cli/install.sh | bash
-```
-
-Or install with npm:
+The fork does not currently publish an npm package. Install the Linux x86_64
+release from GitHub:
 
 ```bash
-npm i -g @xai-official/grok
+curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash
 ```
 
 ## Get Started
 
 ```bash
 # Launch the interactive TUI
-grok
+omg
 
 # Run a single task
-grok -p "Explain this codebase"
+omg -p "Explain this codebase"
 ```
 
-On first launch, Grok opens your browser to authenticate. For CI or headless environments, use an API key from [console.x.ai](https://console.x.ai):
+OMG starts without requiring a provider. Use `/login xai` for X or
+`/login chatgpt` for ChatGPT OAuth.
 
 ```bash
-export XAI_API_KEY="xai-..."
+omg update
 ```
-
-## Update
-
-```bash
-grok update
-```
-
-Or if installed via npm:
-
-```bash
-npm i -g @xai-official/grok@latest
-```
-
-## Supported Platforms
-
-| Platform | Architecture |
-|---|---|
-| macOS | Apple Silicon (arm64) |
-| Linux | x86_64, arm64 |
-| Windows | x86_64 |
 
 ## Documentation
 
-For full documentation including configuration, MCP servers, custom models, headless mode, agent mode, and more, visit [docs.x.ai/build/overview](https://docs.x.ai/build/overview).
+See the [bundled user guide](../../docs/user-guide/README.md). Upstream Grok
+Build documentation may describe behavior that differs from OMG.
 
 ## Feedback
 
-Run `/feedback` inside Grok to report issues or send feedback directly.
+Run `/feedback` inside OMG to report issues.

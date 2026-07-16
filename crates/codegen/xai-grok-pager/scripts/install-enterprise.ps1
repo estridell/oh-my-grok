@@ -1,5 +1,5 @@
 #
-# Grok CLI installer (enterprise channel) for PowerShell — https://x.ai/cli/enterprise-install.ps1
+# Disabled upstream enterprise installer retained for source provenance.
 #
 # Standalone installer for the enterprise channel. Intentionally a full copy of
 # the install logic so changes to the stable installer cannot break enterprise.
@@ -19,7 +19,7 @@ param(
     [string]$Version
 )
 
-Write-Error "The oh-my-grok enterprise installer is disabled in v1."
+Write-Error "The OMG enterprise installer is disabled in v1."
 exit 1
 
 $ErrorActionPreference = 'Stop'
@@ -186,9 +186,9 @@ if ($Version) {
 }
 
 if ($AuthSource) {
-    Write-Host "Installing Grok $resolvedVersion ($platform, $AuthSource)..." -ForegroundColor Cyan
+    Write-Host "Installing OMG $resolvedVersion ($platform, $AuthSource)..." -ForegroundColor Cyan
 } else {
-    Write-Host "Installing Grok $resolvedVersion ($platform)..." -ForegroundColor Cyan
+    Write-Host "Installing OMG $resolvedVersion ($platform)..." -ForegroundColor Cyan
 }
 
 # --- Download binary ---
@@ -317,7 +317,7 @@ if ($env:GROK_DEPLOYMENT_KEY) {
     }
 }
 
-Write-Host "Grok $resolvedVersion installed to $BinDir\grok.exe" -ForegroundColor Green
+Write-Host "OMG $resolvedVersion installed to $BinDir\grok.exe" -ForegroundColor Green
 
 # --- Ensure grok is on PATH ---
 

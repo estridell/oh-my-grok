@@ -24,7 +24,7 @@ omg agent stdio
 
 - [Installation](#installation)
 - [Authentication](#authentication) — browser login, API key, OIDC, external auth providers
-- **Using Grok**
+- **Using OMG**
   - [Interactive TUI](#interactive-tui) — shortcuts, slash commands, file references
   - [Headless Mode](#headless-mode) — scripting, CI/CD, output formats
   - [Agent Mode](#agent-mode) — stdio, ACP integration
@@ -51,7 +51,7 @@ omg agent stdio
   - [File Locations](#file-locations)
   - [Environment Variables](#environment-variables)
   - [Troubleshooting](#troubleshooting)
-- [Building with Grok](#building-with-grok) — headless API, ACP SDK integration
+- [Building with OMG](#building-with-omg) — headless API, ACP SDK integration
 
 ---
 
@@ -62,7 +62,7 @@ omg agent stdio
 curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash
 
 # Install a specific version
-curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash -s 0.1.0
+curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash -s 0.1.1
 ```
 
 Verify installation:
@@ -83,7 +83,7 @@ omg update
 
 ### Browser Login (Default)
 
-On first launch, Grok opens your browser to authenticate with grok.com:
+On first launch, OMG opens your browser to authenticate with grok.com:
 
 ```bash
 omg
@@ -152,13 +152,13 @@ export GROK_CLI_CHAT_PROXY_BASE_URL="https://grok-proxy.acme.com/v1"
 
 For environments where browser-based login isn't possible (sandboxed VMs, CI runners, air-gapped networks), delegate authentication to an external binary or script. This is the recommended approach for enterprise deployments where your company runs its own auth infrastructure (SSO, device code flows, certificate auth, etc.).
 
-Grok is provider-agnostic — it doesn't know or care how your binary authenticates. It just runs the command, reads a token from stdout, and stores it. Your binary is a black box that handles the entire auth flow.
+OMG is provider-agnostic — it doesn't know or care how your binary authenticates. It just runs the command, reads a token from stdout, and stores it. Your binary is a black box that handles the entire auth flow.
 
 #### How It Works
 
 ```
 ┌──────────────┐     sh -c     ┌────────────────────────┐
-│     Grok     │──────────────▶│  your auth binary      │
+│     OMG     │──────────────▶│  your auth binary      │
 │              │               │                        │
 │  reads       │◀── stdout ────│  prints token          │
 │  auth.json   │               │                        │
@@ -166,11 +166,11 @@ Grok is provider-agnostic — it doesn't know or care how your binary authentica
 └──────────────┘               └────────────────────────┘
 ```
 
-1. Grok runs your command via `sh -c "<command>"`
+1. OMG runs your command via `sh -c "<command>"`
 2. Your binary does whatever auth flow it needs (SSO login, device code, cert exchange, etc.)
 3. **stderr** → displayed directly to the user (use for login URLs, status messages, progress)
-4. **stdout** → captured by Grok and saved to `~/.oh-my-grok/auth.json` as the access token
-5. exit 0 → success; exit non-zero → Grok falls through to interactive login
+4. **stdout** → captured by OMG and saved to `~/.oh-my-grok/auth.json` as the access token
+5. exit 0 → success; exit non-zero → OMG falls through to interactive login
 
 #### The stdout / stderr Contract
 
@@ -178,10 +178,10 @@ This is the most important thing to get right:
 
 | Stream | What to print | Who sees it |
 |--------|---------------|-------------|
-| **stdout** | The token — nothing else | Grok (parsed and stored in `auth.json`) |
+| **stdout** | The token — nothing else | OMG (parsed and stored in `auth.json`) |
 | **stderr** | Login URLs, status messages, errors, progress | The user (displayed in their terminal) |
 
-**Do not print anything to stdout except the token.** No progress messages, no debug output, no "Login successful!" text. Grok reads stdout verbatim and tries to parse it as a token. Any extra text will break parsing.
+**Do not print anything to stdout except the token.** No progress messages, no debug output, no "Login successful!" text. OMG reads stdout verbatim and tries to parse it as a token. Any extra text will break parsing.
 
 #### stdout Token Format
 
@@ -197,7 +197,7 @@ eyJhbGciOiJSUzI1NiIs...
 {"access_token": "eyJhbGciOi...", "refresh_token": "ref-tok", "expires_in": 3600}
 ```
 
-Use JSON if your tokens expire and you want Grok to automatically re-run the binary before expiry. The `expires_in` field (seconds until expiry) tells Grok when to proactively refresh. Without it, Grok assumes tokens last 30 days.
+Use JSON if your tokens expire and you want OMG to automatically re-run the binary before expiry. The `expires_in` field (seconds until expiry) tells OMG when to proactively refresh. Without it, OMG assumes tokens last 30 days.
 
 #### Minimal Example
 
@@ -209,7 +209,7 @@ echo "Visit: https://sso.acme.com/device-login?code=ABCD-1234" >&2
 
 # ... do the auth flow, get a token ...
 
-# Print ONLY the token to stdout (Grok captures this)
+# Print ONLY the token to stdout (OMG captures this)
 echo "eyJhbGciOiJSUzI1NiIs..."
 ```
 
@@ -230,7 +230,7 @@ export GROK_AUTH_PROVIDER_LABEL="Acme Corp"   # optional
 export GROK_AUTH_TOKEN_TTL=3600               # optional
 ```
 
-If your binary outputs a bare token string (not JSON with `expires_in`), set `auth_token_ttl` to the token's expected lifetime in seconds. Without it, Grok cannot detect expiry proactively and will only refresh after a 401.
+If your binary outputs a bare token string (not JSON with `expires_in`), set `auth_token_ttl` to the token's expected lifetime in seconds. Without it, OMG cannot detect expiry proactively and will only refresh after a 401.
 
 The command is run via `sh -c`, so it can be a binary path, a shell script, or a pipeline.
 
@@ -266,7 +266,7 @@ echo "{\"access_token\": \"$TOKEN\", \"expires_in\": 3600}"
 
 #### Example: Auth Binary with Refresh Support
 
-When Grok needs to refresh an expired token, it re-runs your binary with `GROK_AUTH_EXPIRED=1` set in the environment. Your binary can use this to take a faster silent-refresh path:
+When OMG needs to refresh an expired token, it re-runs your binary with `GROK_AUTH_EXPIRED=1` set in the environment. Your binary can use this to take a faster silent-refresh path:
 
 ```bash
 #!/bin/sh
@@ -288,31 +288,31 @@ fi
 echo "{\"access_token\": \"$TOKEN\", \"expires_in\": 3600}"
 ```
 
-`GROK_AUTH_EXPIRED` is optional — if your binary ignores it, Grok still works. It just runs the same flow for both login and refresh.
+`GROK_AUTH_EXPIRED` is optional — if your binary ignores it, OMG still works. It just runs the same flow for both login and refresh.
 
 ### Automatic Credential Refresh
 
-Grok supports automatic credential refresh for external auth providers and OIDC. When Grok detects that your token is expired (either locally based on `expires_in`, or when the server returns a 401), it automatically re-runs your `auth_provider_command` to obtain new credentials before retrying the request.
+OMG supports automatic credential refresh for external auth providers and OIDC. When OMG detects that your token is expired (either locally based on `expires_in`, or when the server returns a 401), it automatically re-runs your `auth_provider_command` to obtain new credentials before retrying the request.
 
-This is transparent — you don't need to do anything. Grok handles it in the background during your session.
+This is transparent — you don't need to do anything. OMG handles it in the background during your session.
 
 **When does refresh happen?**
 
-- **Before expiry:** If your binary returned `expires_in` in its JSON output, or you set `auth_token_ttl` in config, Grok re-runs the binary ~5 minutes before the token expires, so you never see an auth error.
-- **On auth error:** If the server rejects a request with 401/403 (e.g. token was revoked or expired), Grok re-runs the binary and retries the request once.
-- **OIDC:** If you're using OIDC and have a `refresh_token`, Grok silently refreshes via your IdP without re-opening the browser.
+- **Before expiry:** If your binary returned `expires_in` in its JSON output, or you set `auth_token_ttl` in config, OMG re-runs the binary ~5 minutes before the token expires, so you never see an auth error.
+- **On auth error:** If the server rejects a request with 401/403 (e.g. token was revoked or expired), OMG re-runs the binary and retries the request once.
+- **OIDC:** If you're using OIDC and have a `refresh_token`, OMG silently refreshes via your IdP without re-opening the browser.
 
 **Tuning the refresh buffer:**
 
 ```bash
-# Grok refreshes tokens 5 minutes before expiry by default.
+# OMG refreshes tokens 5 minutes before expiry by default.
 # Set to 0 to only refresh on 401. Set higher for very short-lived tokens.
 export GROK_AUTH_EARLY_INVALIDATION_SECS=300
 ```
 
 **Keep in mind:**
-- When using `auth_provider_command`, you don't need to run `omg login` before starting — Grok runs your binary automatically on first launch. You _can_ run `omg login` to explicitly hydrate `auth.json` ahead of time if you prefer.
-- If both OIDC and `auth_provider_command` are configured: at **login** time, Grok tries OIDC silent refresh first (if a `refresh_token` exists), then the external binary, then browser-based login. During a **session**, whichever method is configured is used exclusively — if `auth_provider_command` is set it handles all mid-session refreshes; otherwise OIDC silent refresh is used.
+- When using `auth_provider_command`, you don't need to run `omg login` before starting — OMG runs your binary automatically on first launch. You _can_ run `omg login` to explicitly hydrate `auth.json` ahead of time if you prefer.
+- If both OIDC and `auth_provider_command` are configured: at **login** time, OMG tries OIDC silent refresh first (if a `refresh_token` exists), then the external binary, then browser-based login. During a **session**, whichever method is configured is used exclusively — if `auth_provider_command` is set it handles all mid-session refreshes; otherwise OIDC silent refresh is used.
 - Your binary's stderr output is displayed to the user but interactive stdin is not supported. This works well for browser-based SSO flows where the binary displays a URL and you complete authentication in the browser.
 
 #### Troubleshooting Auth
@@ -336,7 +336,7 @@ Common log messages:
 
 ### Using auth.json for API Access
 
-If you've authenticated with `omg login`, you can use the stored credentials to call the CLI chat proxy directly via curl. The proxy requires specific headers that mirror what the grok CLI sends internally:
+If you've authenticated with `omg login`, you can use the stored credentials to call the CLI chat proxy directly via curl. The proxy requires specific headers that mirror what the omg CLI sends internally:
 
 ```bash
 curl -s -N -X POST "https://cli-chat-proxy.grok.com/v1/chat/completions" \
@@ -499,7 +499,7 @@ The `!` modifier allows you to attach any file in the project regardless of igno
 
 ## Headless Mode
 
-Run Grok non-interactively from the command line. Use headless mode when you need to:
+Run OMG non-interactively from the command line. Use headless mode when you need to:
 
 - **Automate tasks** — CI/CD pipelines, pre-commit hooks, cron jobs
 - **Script workflows** — Batch process files, chain with other tools
@@ -707,7 +707,7 @@ omg -p "Review changes for bugs and security issues." \
   --output-format json --always-approve | jq -r '.text' > review.md
 
 # Pipeline: chain with other tools
-git diff --staged | grok -p "Write a concise commit message for these changes"
+git diff --staged | omg -p "Write a concise commit message for these changes"
 
 # Batch: process multiple files
 for file in src/*.js; do
@@ -725,7 +725,7 @@ omg -p "Review staged changes for obvious bugs. Reply OK if fine, or list issues
 
 ## Agent Mode
 
-Run Grok as an ACP (Agent Client Protocol) agent for integration with IDEs, editors, and custom tooling.
+Run OMG as an ACP (Agent Client Protocol) agent for integration with IDEs, editors, and custom tooling.
 
 ### stdio Transport
 
@@ -786,9 +786,9 @@ This runs entirely locally.
 
 ---
 
-## Building with Grok
+## Building with OMG
 
-Grok can be used as an OpenAI-compatible chat completion backend. Choose between two integration modes:
+OMG can be used as an OpenAI-compatible chat completion backend. Choose between two integration modes:
 
 | Mode         | Use Case                                                           |
 | ------------ | ------------------------------------------------------------------ |
@@ -816,7 +816,7 @@ class GrokChat:
         self.env = {**os.environ}
 
     def _build_cmd(self, prompt, model, stream):
-        return ["grok", "-p", prompt, "-m", model, "--cwd", self.cwd,
+        return ["omg", "-p", prompt, "-m", model, "--cwd", self.cwd,
                 "--output-format", "streaming-json" if stream else "json", "--always-approve"]
 
     async def create(self, messages, model="grok-build", stream=False):
@@ -905,7 +905,7 @@ class GrokChat {
     if (stream) return this.streamResponse(prompt, model);
 
     const { stdout } = await execa(
-      "grok",
+      "omg",
       this.buildArgs(prompt, model, false),
     );
     const data = JSON.parse(stdout || '{"text":""}');
@@ -920,7 +920,7 @@ class GrokChat {
   }
 
   async *streamResponse(prompt: string, model: string) {
-    const proc = execa("grok", this.buildArgs(prompt, model, true));
+    const proc = execa("omg", this.buildArgs(prompt, model, true));
     for await (const chunk of proc.stdout!) {
       for (const line of chunk.toString().split("\n").filter(Boolean)) {
         const event = JSON.parse(line);
@@ -974,7 +974,7 @@ class GrokACPChat:
 
     async def init(self):
         self.proc = await asyncio.create_subprocess_exec(
-            "grok", "agent", "stdio",
+            "omg", "agent", "stdio",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE
         )
@@ -1099,7 +1099,7 @@ class GrokACPChat {
   constructor(private cwd = ".") {}
 
   async init() {
-    this.proc = spawn("grok", ["agent", "stdio"]);
+    this.proc = spawn("omg", ["agent", "stdio"]);
     this.rl = readline.createInterface({ input: this.proc.stdout! });
 
     // Initialize
@@ -1223,7 +1223,7 @@ for await (const chunk of await client.create(
 
 ### ACP Protocol Reference
 
-Grok implements the [Agent Client Protocol (ACP)](https://agentclientprotocol.com), a standard for AI agent communication.
+OMG implements the [Agent Client Protocol (ACP)](https://agentclientprotocol.com), a standard for AI agent communication.
 
 #### Architecture
 
@@ -1234,7 +1234,7 @@ Grok implements the [Agent Client Protocol (ACP)](https://agentclientprotocol.co
 └──────────────────┬──────────────────────┘
                    │ JSON-RPC over stdio
 ┌──────────────────▼──────────────────────┐
-│           grok agent stdio              │
+│           omg agent stdio              │
 │                                         │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  │
 │  │ Session │  │  Tools  │  │   MCP   │  │
@@ -1272,7 +1272,7 @@ Grok implements the [Agent Client Protocol (ACP)](https://agentclientprotocol.co
 
 ## Configuration
 
-Grok reads configuration from `~/.oh-my-grok/config.toml`. If the file doesn't exist, Grok uses sensible defaults. You only need to specify values you want to override.
+OMG reads configuration from `~/.oh-my-grok/config.toml`. If the file doesn't exist, OMG uses sensible defaults. You only need to specify values you want to override.
 
 Each feature section below documents its own config. This section covers the general-purpose settings that don't have their own top-level section.
 
@@ -1335,18 +1335,18 @@ When building from source, defaults can also be baked into the binary at compile
 
 ### LSP Servers
 
-Grok can connect to Language Server Protocol (LSP) servers configured in JSON files. LSP integration gives Grok language-aware code intelligence while it works in your repository.
+OMG can connect to Language Server Protocol (LSP) servers configured in JSON files. LSP integration gives OMG language-aware code intelligence while it works in your repository.
 
 LSP support is used in two ways:
 
-- **Passive diagnostics** — after edits, Grok can surface language-server diagnostics such as errors and warnings.
-- **The `lsp` tool** — Grok can actively query the language server for `goToDefinition`, `findReferences`, `hover`, `goToImplementation`, `documentSymbol`, and `workspaceSymbol`.
+- **Passive diagnostics** — after edits, OMG can surface language-server diagnostics such as errors and warnings.
+- **The `lsp` tool** — OMG can actively query the language server for `goToDefinition`, `findReferences`, `hover`, `goToImplementation`, `documentSymbol`, and `workspaceSymbol`.
 
 Reference: [Language Server Protocol](https://microsoft.github.io/language-server-protocol/)
 
 #### Config locations
 
-Grok looks for server definitions in:
+OMG looks for server definitions in:
 
 - project config: `<repo>/.grok/lsp.json`
 - user config: `~/.oh-my-grok/lsp.json`
@@ -1363,7 +1363,7 @@ Having an `lsp.json` file is enough for passive diagnostics. The model-visible `
 Enable the tool for one run:
 
 ```bash
-GROK_LSP_TOOLS=1 grok
+GROK_LSP_TOOLS=1 omg
 ```
 
 Or enable it in config:
@@ -1373,7 +1373,7 @@ Or enable it in config:
 lsp_tools = true
 ```
 
-If LSP tools are enabled but no usable server config is found, Grok emits a non-fatal warning in logs and continues without the `lsp` tool. If config exists but every server fails to start, the tool may still be present and will fail on first use with a startup error.
+If LSP tools are enabled but no usable server config is found, OMG emits a non-fatal warning in logs and continues without the `lsp` tool. If config exists but every server fails to start, the tool may still be present and will fail on first use with a startup error.
 
 #### Example `lsp.json`
 
@@ -1415,7 +1415,7 @@ If LSP tools are enabled but no usable server config is found, Grok emits a non-
 
 #### Installing language servers
 
-Grok does not bundle language server binaries. You must install the server yourself and make sure the configured `command` is runnable on your machine.
+OMG does not bundle language server binaries. You must install the server yourself and make sure the configured `command` is runnable on your machine.
 
 Examples:
 
@@ -1452,7 +1452,7 @@ default = "company-grok"
 [model.company-grok]
 model = "grok-build"
 base_url = "https://grok-proxy.acme.com/"
-name = "Grok Build Latest (Proxy)"
+name = "OMG Latest (Proxy)"
 context_window = 256000
 
 [features]
@@ -1469,15 +1469,15 @@ With this config, `omg` runs your auth binary, stores the token, and routes infe
 
 ## AGENTS.md
 
-Add project-specific instructions by creating an agent rules file (e.g., `AGENTS.md`). Grok reads these files and appends their contents to the system prompt.
+Add project-specific instructions by creating an agent rules file (e.g., `AGENTS.md`). OMG reads these files and appends their contents to the system prompt.
 
-Grok scans for agent rules in this order:
+OMG scans for agent rules in this order:
 
 1. `~/.oh-my-grok/` (global rules)
 2. If inside a git repo: every directory from the repo root → current working directory (inclusive)
 3. If **not** inside a git repo: only the current working directory
 
-Within each directory, Grok checks for these filenames:
+Within each directory, OMG checks for these filenames:
 
 - `Agents.md`, `Claude.md`, `AGENT.md`, `AGENTS.md`
 
@@ -1489,11 +1489,11 @@ Ordering matters: files found later (deeper directories) come last, so they effe
 
 ## Skills
 
-Skills are reusable prompt packages that extend Grok with specialized workflows, domain knowledge, and tool integrations. Use them to encode repeatable procedures that would otherwise require re-explaining each session.
+Skills are reusable prompt packages that extend OMG with specialized workflows, domain knowledge, and tool integrations. Use them to encode repeatable procedures that would otherwise require re-explaining each session.
 
 ### Skill Locations
 
-Grok discovers skills from these directories (in priority order):
+OMG discovers skills from these directories (in priority order):
 
 | Location                    | Scope | Priority |
 | --------------------------- | ----- | -------- |
@@ -1551,7 +1551,7 @@ Review staged changes and create a commit with a clear, conventional message.
 | Field         | Description                                                                  |
 | ------------- | ---------------------------------------------------------------------------- |
 | `name`        | Skill identifier (lowercase, hyphens, max 64 chars)                          |
-| `description` | What the skill does and when to use it—this is how Grok decides to invoke it |
+| `description` | What the skill does and when to use it—this is how OMG decides to invoke it |
 
 ### Using Skills
 
@@ -1566,9 +1566,9 @@ Review staged changes and create a commit with a clear, conventional message.
 
 **Slash command shorthand:**
 
-Users can reference skills as `/skill-name` (e.g., `/commit`). When you see this pattern, Grok invokes the corresponding skill.
+Users can reference skills as `/skill-name` (e.g., `/commit`). When you see this pattern, OMG invokes the corresponding skill.
 
-> **Tip:** The `description` field is critical — it determines when Grok automatically invokes the skill. Be specific about trigger phrases and use cases.
+> **Tip:** The `description` field is critical — it determines when OMG automatically invokes the skill. Be specific about trigger phrases and use cases.
 
 ---
 
@@ -1576,7 +1576,7 @@ Users can reference skills as `/skill-name` (e.g., `/commit`). When you see this
 
 Agent profiles control the system prompt, toolset, and behavior of a session. A profile is a `.md` file with YAML frontmatter, or a named agent discovered from disk.
 
-Grok discovers agent definitions from `.grok/agents/` (project), `~/.oh-my-grok/agents/` (user), and built-in agents. Priority (highest wins):
+OMG discovers agent definitions from `.grok/agents/` (project), `~/.oh-my-grok/agents/` (user), and built-in agents. Priority (highest wins):
 
 1. `--agent-profile <PATH>` CLI flag
 2. `[agent]` section in `config.toml`
@@ -1654,7 +1654,7 @@ Both are also discovered from `.grok/roles/*.toml` and `.grok/personas/*.toml` f
 
 ## Plugins
 
-Plugins extend Grok with additional tools, skills, and MCP servers from external packages.
+Plugins extend OMG with additional tools, skills, and MCP servers from external packages.
 
 ### Plugin Locations
 
@@ -1681,7 +1681,7 @@ Manage plugins at runtime with `/plugins list`, `/plugins reload`, or `/plugins 
 
 Hooks run project scripts on tool and session lifecycle events (pre/post-tool-use, session start/end). Projects must be explicitly trusted before their hooks execute.
 
-Grok discovers hooks from `.grok/hooks/` in the project directory. Manage them with:
+OMG discovers hooks from `.grok/hooks/` in the project directory. Manage them with:
 
 ```
 /hooks-list              # show hooks loaded in this session
@@ -1713,9 +1713,9 @@ max_completion_tokens = 8192          # Max tokens per response
 context_window = 256000               # Total context window in tokens (for auto-compact)
 ```
 
-**Credential resolution order:** `api_key` → `env_key` → `XAI_API_KEY`. If neither `api_key` nor `env_key` is set, Grok falls back to the global `XAI_API_KEY` environment variable.
+**Credential resolution order:** `api_key` → `env_key` → `XAI_API_KEY`. If neither `api_key` nor `env_key` is set, OMG falls back to the global `XAI_API_KEY` environment variable.
 
-The `context_window` parameter is used to calculate when auto-compact should trigger. If not specified, Grok falls back to built-in defaults for known models.
+The `context_window` parameter is used to calculate when auto-compact should trigger. If not specified, OMG falls back to built-in defaults for known models.
 
 ### Overriding Built-in Models
 
@@ -1732,7 +1732,7 @@ temperature = 0.5
 api_key = "sk-custom"
 ```
 
-**How it works:** When you override a built-in model, Grok starts with the default configuration (including the correct `base_url` from your `[endpoints]` setting), then applies only the fields you specify. Unspecified fields inherit from the default.
+**How it works:** When you override a built-in model, OMG starts with the default configuration (including the correct `base_url` from your `[endpoints]` setting), then applies only the fields you specify. Unspecified fields inherit from the default.
 
 **Priority order:**
 1. Your config (`[model.*]`) — highest priority
@@ -1743,14 +1743,14 @@ api_key = "sk-custom"
 
 > **Overriding with a custom model:** Setting `[models] web_search` alone is not
 > enough if the model isn't already in the catalog (built-in defaults or
-> `omg models` output). You also need a `[model.*]` entry so Grok knows
+> `omg models` output). You also need a `[model.*]` entry so OMG knows
 > how to reach it. Without both, web search is silently disabled.
 >
 > ```toml
 > [models]
 > web_search = "my-custom-model"       # 1. tell web search which model to use
 >
-> [model.my-custom-model]              # 2. tell Grok how to reach it
+> [model.my-custom-model]              # 2. tell OMG how to reach it
 > model = "my-custom-model"
 > api_backend = "responses"            # required — web search uses the Responses API
 > # base_url, api_key, env_key optional — defaults to cli-chat-proxy
@@ -1817,7 +1817,7 @@ default = "my-model"
 
 ### Custom Models Endpoint
 
-Point Grok at a custom OpenAI-compatible `/v1/models` endpoint instead of the default cli-chat-proxy. Useful when models are served behind a corporate gateway or self-hosted inference stack.
+Point OMG at a custom OpenAI-compatible `/v1/models` endpoint instead of the default cli-chat-proxy. Useful when models are served behind a corporate gateway or self-hosted inference stack.
 
 **Environment variables:**
 
@@ -1835,7 +1835,7 @@ export XAI_API_KEY="xai-..."
 omg
 ```
 
-Grok fetches the model list from `{GROK_MODELS_BASE_URL}/models` on startup and sends inference requests to `GROK_MODELS_BASE_URL`. This follows the standard OpenAI-compatible convention used by OpenAI, Anthropic, OpenRouter, Groq, Together.ai, and others.
+OMG fetches the model list from `{GROK_MODELS_BASE_URL}/models` on startup and sends inference requests to `GROK_MODELS_BASE_URL`. This follows the standard OpenAI-compatible convention used by OpenAI, Anthropic, OpenRouter, Groq, Together.ai, and others.
 
 If your model list endpoint differs from `{base_url}/models`, set `GROK_MODELS_LIST_URL` explicitly.
 
@@ -1852,13 +1852,13 @@ api_key = "my-api-key"
 
 When using `[endpoints]` with partial model overrides, the `base_url` is inherited from the endpoints config — you don't need to specify it in each `[model.*]` section.
 
-**Auth behavior:** When `models_base_url` is set, Grok uses API key auth (`Authorization: Bearer`) instead of session auth. `omg login` is not required — only the API key.
+**Auth behavior:** When `models_base_url` is set, OMG uses API key auth (`Authorization: Bearer`) instead of session auth. `omg login` is not required — only the API key.
 
 ---
 
 ## MCP Servers
 
-Extend Grok's capabilities with [Model Context Protocol](https://modelcontextprotocol.io) servers.
+Extend OMG's capabilities with [Model Context Protocol](https://modelcontextprotocol.io) servers.
 
 ### Configuration
 
@@ -1878,7 +1878,7 @@ tool_timeouts = { create_issue = 120, search = 30 }  # Per-tool timeout override
 
 ### Project-Scoped MCP Servers
 
-MCP servers can also be configured per-project in `.grok/config.toml`. Grok walks from the current directory up to the git repo root, loading `.grok/config.toml` at each level:
+MCP servers can also be configured per-project in `.grok/config.toml`. OMG walks from the current directory up to the git repo root, loading `.grok/config.toml` at each level:
 
 | Location                        | Scope             | Priority |
 | ------------------------------- | ----------------- | -------- |
@@ -1977,7 +1977,7 @@ See the [MCP Server Registry](https://github.com/modelcontextprotocol/servers) f
 
 > **Experimental:** requires `--experimental-memory` (or `GROK_MEMORY=1` / `[memory] enabled = true` in config).
 
-Cross-session memory lets Grok remember facts, decisions, code patterns, and debugging workflows across separate sessions in the same project.
+Cross-session memory lets OMG remember facts, decisions, code patterns, and debugging workflows across separate sessions in the same project.
 
 ### How it works
 
@@ -2008,7 +2008,7 @@ enabled = true
 
 ### What gets saved automatically
 
-At the end of each session, Grok saves a **structured metadata summary** to the daily session log:
+At the end of each session, OMG saves a **structured metadata summary** to the daily session log:
 - Message counts (user / assistant / tool)
 - Topics — the first few real user prompts from the session
 - Tool-usage breakdown (e.g., `read_file: 4, search_replace: 3`)
@@ -2046,7 +2046,7 @@ Omit `workspace` or `global` and it defaults to workspace scope.
 
 ### Searching memory
 
-Grok searches memory automatically on the first turn of each session and after compaction. The first-turn injection can be disabled or given its own score threshold under `[memory.initial_injection]`. You can also invoke `memory_search` and `memory_get` directly via the model prompt:
+OMG searches memory automatically on the first turn of each session and after compaction. The first-turn injection can be disabled or given its own score threshold under `[memory.initial_injection]`. You can also invoke `memory_search` and `memory_get` directly via the model prompt:
 
 ```
 Search memory for "auth middleware patterns"
@@ -2084,7 +2084,7 @@ Key options under `[memory]` in `~/.oh-my-grok/config.toml`:
 
 ### Observability
 
-When first-turn memory injection runs, Grok emits the `grok-shell-memory_injection`
+When first-turn memory injection runs, OMG emits the `grok-shell-memory_injection`
 telemetry event. It includes:
 - whether the greeting fallback query path was used
 - result counts and top score
@@ -2094,7 +2094,7 @@ telemetry event. It includes:
 
 ## Sandbox
 
-Grok can restrict what the agent process and its spawned commands can access on
+OMG can restrict what the agent process and its spawned commands can access on
 your filesystem and network using OS-level kernel primitives (Landlock on Linux,
 Seatbelt on macOS). This is off by default.
 
@@ -2151,7 +2151,7 @@ omg --sandbox devbox
 
 ### How It Works
 
-The sandbox is applied to the **entire grok process** at startup using kernel
+The sandbox is applied to the **entire omg process** at startup using kernel
 primitives — not per-command wrapping. This means all tool operations are
 covered:
 
@@ -2166,7 +2166,7 @@ model cannot convince the agent to relax restrictions at runtime.
 
 - **Platform support**: Sandbox enforcement uses Landlock on Linux (kernel ≥ 5.13)
   and Seatbelt on macOS. If the sandbox cannot be applied (e.g., unsupported
-  kernel, missing entitlements), Grok logs a warning and continues without
+  kernel, missing entitlements), OMG logs a warning and continues without
   enforcement.
 
 - **Network restrictions are partial**: Profiles with `restrict_network` block
@@ -2184,7 +2184,7 @@ for telemetry and debugging.
 
 ## Introspection
 
-Use `omg inspect` to see everything Grok discovers in the current directory:
+Use `omg inspect` to see everything OMG discovers in the current directory:
 
 ```bash
 omg inspect          # human-readable output
@@ -2208,11 +2208,11 @@ Plugin-provided components appear in their respective sections with a `[plugin: 
 
 ## Claude Code Compatibility
 
-Grok automatically discovers configuration from Claude Code directories alongside native `.grok/` paths. No extra setup is needed.
+OMG automatically discovers configuration from Claude Code directories alongside native `.grok/` paths. No extra setup is needed.
 
 ### What is picked up
 
-| Component         | Claude Code location                                 | How Grok uses it                 |
+| Component         | Claude Code location                                 | How OMG uses it                 |
 | ----------------- | ---------------------------------------------------- | -------------------------------- |
 | **Skills**        | `.claude/skills/`, `~/.claude/skills/`               | Loaded as skills (same as `.grok/skills/`) |
 | **Agents**        | `.claude/agents/`, `~/.claude/agents/`               | Loaded as subagents              |
@@ -2225,13 +2225,13 @@ Grok automatically discovers configuration from Claude Code directories alongsid
 
 ### Plugin components
 
-Claude Code plugins can provide skills (`skills/`), commands (`commands/`), agents (`agents/`), hooks (`hooks/hooks.json`), MCP servers (`.mcp.json`), and LSP servers (`.lsp.json`). All component types are discovered and used by Grok at runtime.
+Claude Code plugins can provide skills (`skills/`), commands (`commands/`), agents (`agents/`), hooks (`hooks/hooks.json`), MCP servers (`.mcp.json`), and LSP servers (`.lsp.json`). All component types are discovered and used by OMG at runtime.
 
 ---
 
 ## Built-in Tools
 
-Grok includes these tools by default:
+OMG includes these tools by default:
 
 | Tool             | Description                                                    |
 | ---------------- | -------------------------------------------------------------- |
@@ -2280,7 +2280,7 @@ When no custom `allowed_domains` is set, the tool permits a default allowlist of
 
 ## Session Persistence
 
-Grok automatically persists conversations to disk. This works across all modes: TUI, headless, and agent stdio.
+OMG automatically persists conversations to disk. This works across all modes: TUI, headless, and agent stdio.
 
 ### Storage Layout
 
@@ -2424,22 +2424,22 @@ Generate and install:
 
 ```bash
 mkdir -p ~/.local/share/bash-completion/completions
-omg completions bash > ~/.local/share/bash-completion/completions/grok
+omg completions bash > ~/.local/share/bash-completion/completions/omg
 ```
 
 Reload your shell or run `source ~/.bashrc`.
 
-Alternative (Grok-managed location):
+Alternative (OMG-managed location):
 
 ```bash
 mkdir -p ~/.oh-my-grok/completions/bash
-omg completions bash > ~/.oh-my-grok/completions/bash/grok.bash
+omg completions bash > ~/.oh-my-grok/completions/bash/omg.bash
 ```
 
 Add to `~/.bashrc`:
 
 ```bash
-[[ -r "$HOME/.grok/completions/bash/grok.bash" ]] && source "$HOME/.grok/completions/bash/grok.bash"
+[[ -r "$HOME/.grok/completions/bash/omg.bash" ]] && source "$HOME/.grok/completions/bash/omg.bash"
 ```
 
 ### Zsh
@@ -2459,7 +2459,7 @@ autoload -Uz compinit
 compinit
 ```
 
-Alternative (Grok-managed location):
+Alternative (OMG-managed location):
 
 ```bash
 mkdir -p ~/.oh-my-grok/completions/zsh
@@ -2491,7 +2491,7 @@ Write logs to a file for debugging. The TUI captures stderr, so `RUST_LOG` alone
 omg --debug
 
 # Log to a custom path
-GROK_LOG_FILE=/tmp/grok-debug.log grok
+GROK_LOG_FILE=/tmp/grok-debug.log omg
 
 # Tail the most-recently-opened session's log in another terminal (Unix symlink)
 tail -f ~/.oh-my-grok/debug/latest.txt
@@ -2501,7 +2501,7 @@ The `--debug` firehose uses a fixed filter (first-party crates at `debug`) and i
 
 ```bash
 # Debug auth, info for everything else
-GROK_LOG_FILE=/tmp/grok-debug.log RUST_LOG="info,xai_grok_shell::auth=debug" grok
+GROK_LOG_FILE=/tmp/grok-debug.log RUST_LOG="info,xai_grok_shell::auth=debug" omg
 ```
 
 ### Authentication fails

@@ -1,7 +1,7 @@
-//! Logo component — renders the braille art logo.
+//! Logo component — renders the OMG text-art logo.
 //!
-//! Hidden entirely on legacy Windows consoles: the U+2800 braille block is
-//! not covered by the ConHost raster fonts and would render as tofu.
+//! Hidden entirely on legacy Windows consoles, whose raster fonts do not
+//! reliably cover the box-drawing and block glyphs used by the artwork.
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
@@ -35,7 +35,7 @@ fn pick_logo_for(window_height: u16, hidden: bool) -> Option<&'static str> {
     }
 }
 
-/// The braille art has no ASCII stand-in; see the module doc.
+/// The text art has no legacy-console-safe stand-in; see the module doc.
 fn logo_hidden() -> bool {
     crate::glyphs::is_legacy_windows_console()
 }
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(pick_logo_for(FULL_LOGO_MIN_HEIGHT, false), Some(LOGO));
     }
 
-    // The braille art has no legacy-safe stand-in, so every height tier must
+    // The text art has no legacy-safe stand-in, so every height tier must
     // collapse to no logo when the legacy-console flag is set.
     #[test]
     fn logo_hidden_on_legacy_console_at_every_height() {

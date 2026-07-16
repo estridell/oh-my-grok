@@ -1,21 +1,14 @@
-<div align="center">
+# oh-my-grok (`omg`)
 
-> **oh-my-grok** is an independent fork of Grok Build. It keeps the stock X
-> account flow and adds ChatGPT OAuth, Codex Responses support, and the
-> GPT-5.6 Sol, Terra, and Luna model family. The primary binary is `omg`, with
-> `oh-my-grok` as a long-name alias.
+**oh-my-grok is an independent, unofficial multi-provider fork of
+[Grok Build](https://github.com/xai-org/grok-build). It is not published,
+maintained, endorsed, or supported by xAI or SpaceXAI.**
 
-<h1>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://media.x.ai/v1/website/spacexai-symbol-white-transparent-0c31957f.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://media.x.ai/v1/website/spacexai-symbol-black-transparent-6435cf42.png">
-    <img alt="SpaceXAI logo" src="https://media.x.ai/v1/website/spacexai-symbol-black-transparent-6435cf42.png" width="96">
-  </picture>
-  <br>
-  oh-my-grok (<code>omg</code>)
-</h1>
+It keeps the upstream X account flow and adds ChatGPT OAuth, Codex Responses
+support, and the GPT-5.6 Sol, Terra, and Luna model family. The primary binary
+is `omg`, with `oh-my-grok` as a long-name alias.
 
-**Grok Build** is SpaceXAI's terminal-based AI coding agent. It runs as a
+oh-my-grok is a terminal-based AI coding agent. It runs as a
 full-screen TUI that understands your codebase, edits files, executes shell
 commands, searches the web, and manages long-running tasks — interactively,
 headlessly for scripting/CI, or embedded in editors via the Agent Client
@@ -29,14 +22,11 @@ Protocol (ACP).
 [Contributing](#contributing) ·
 [License](#license)
 
-![Grok Build TUI](https://media.x.ai/v1/website/universe-tui-screenshot-6f7a0837.png)
-
-**Learn more about Grok Build at [x.ai/cli](https://x.ai/cli)**
-
-This repository contains the Rust source for the `grok` CLI/TUI and its agent
-runtime. It is synced periodically from the SpaceXAI monorepo.
-
-</div>
+This repository contains the Rust source for the `omg` CLI/TUI and its agent
+runtime. It is derived from the upstream source published at
+[`xai-org/grok-build`](https://github.com/xai-org/grok-build); upstream names,
+protocol identifiers, and copyright notices are retained where attribution or
+compatibility requires them.
 
 ---
 
@@ -86,8 +76,9 @@ provider; use `/login xai` for X or `/login chatgpt` for ChatGPT OAuth. See the
 
 ## Documentation
 
-Full online documentation is available at
-[docs.x.ai/build/overview](https://docs.x.ai/build/overview).
+The upstream Grok Build documentation is available at
+[docs.x.ai/build/overview](https://docs.x.ai/build/overview). It is maintained
+by xAI and may describe behavior that differs from this fork.
 
 The user guide ships with the pager crate:
 [`crates/codegen/xai-grok-pager/docs/user-guide/`](crates/codegen/xai-grok-pager/docs/user-guide/)

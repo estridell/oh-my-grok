@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Grok CLI installer (enterprise channel) — https://x.ai/cli/enterprise-install.sh
+# Disabled upstream enterprise installer retained for source provenance.
 #
 # Standalone installer for the enterprise channel. This is intentionally a full
 # copy of the install logic (not a wrapper around install.sh) so that changes to
@@ -17,7 +17,7 @@
 # Windows: run under Git for Windows / MSYS2 Bash (same curl | bash flow); WSL
 # uses the Linux binary.
 
-echo "The oh-my-grok enterprise installer is disabled in v1." >&2
+echo "The OMG enterprise installer is disabled in v1." >&2
 exit 1
 
 set -e
@@ -197,9 +197,9 @@ if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._]+)?$ ]]; then
 fi
 
 if [ -n "$AUTH_SOURCE" ]; then
-    echo "Installing Grok $version ($platform, $AUTH_SOURCE)..." >&2
+    echo "Installing OMG $version ($platform, $AUTH_SOURCE)..." >&2
 else
-    echo "Installing Grok $version ($platform)..." >&2
+    echo "Installing OMG $version ($platform)..." >&2
 fi
 
 binary_path="$DOWNLOAD_DIR/grok-$platform"
@@ -215,7 +215,7 @@ if [ "$os" = "windows" ]; then
         if ! download_file_parallel "$artifact_base" "$binary_path"; then
             rm -f "$binary_path"
             if is_not_found "${artifact_base}.exe"; then
-                echo "Error: Grok is not yet available for your system ($platform)." >&2
+                echo "Error: OMG is not yet available for your system ($platform)." >&2
             else
                 echo "Error: binary download failed (${artifact_base}.exe and ${artifact_base})" >&2
             fi
@@ -225,7 +225,7 @@ if [ "$os" = "windows" ]; then
 elif ! download_file_parallel "$artifact_base" "$binary_path"; then
     rm -f "$binary_path"
     if is_not_found "$artifact_base"; then
-        echo "Error: Grok is not yet available for your system ($platform)." >&2
+        echo "Error: OMG is not yet available for your system ($platform)." >&2
     else
         echo "Error: binary download failed from ${artifact_base}" >&2
     fi
@@ -318,9 +318,9 @@ if [ -n "$GROK_DEPLOYMENT_KEY" ]; then
 fi
 
 if [ "$os" = "windows" ]; then
-    echo "Grok $version installed to $BIN_DIR/grok.exe" >&2
+    echo "OMG $version installed to $BIN_DIR/grok.exe" >&2
 else
-    echo "Grok $version installed to $BIN_DIR/grok" >&2
+    echo "OMG $version installed to $BIN_DIR/grok" >&2
 fi
 
 # --- Ensure grok is on PATH ---

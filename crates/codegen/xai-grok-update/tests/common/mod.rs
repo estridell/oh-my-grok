@@ -119,6 +119,7 @@ pub fn make_update_config(channel: &str) -> xai_grok_update::UpdateConfig {
         alpha_test_key: None,
         channel: channel.to_string(),
         npm_registry: None,
+        gh_release_base_url: None,
     }
 }
 
@@ -143,6 +144,52 @@ pub fn can_exec_shell_scripts() -> bool {
 /// A small real executable: exits 0 for `--version`, so the smoke-test passes.
 pub fn small_good_artifact() -> Vec<u8> {
     b"#!/bin/sh\nexit 0\n".to_vec()
+}
+
+/// Mount a complete, checksum-verified GitHub Release on a local server and
+/// return a config that routes the production updater through it.
+pub async fn github_release_config(
+    version: &str,
+) -> (wiremock::MockServer, xai_grok_update::UpdateConfig) {
+    use sha2::{Digest as _, Sha256};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+    let artifact = small_good_artifact();
+    let asset = format!("omg-{version}-{}", host_platform());
+    let checksum = format!("{:x}  {asset}\n", Sha256::digest(&artifact));
+
+    Mock::given(method("GET"))
+        .and(path("/latest/download/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(version))
+        .mount(&server)
+        .await;
+    Mock::given(path(format!("/download/v{version}/{asset}")))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(artifact))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/download/v{version}/SHA256SUMS")))
+        .respond_with(ResponseTemplate::new(200).set_body_string(checksum))
+        .mount(&server)
+        .await;
+
+    let mut config = make_update_config("stable");
+    config.gh_release_base_url = Some(server.uri());
+    (server, config)
+}
+
+/// Count binary GETs (excluding HEAD probes and checksum/version requests).
+pub async fn github_release_download_count(server: &wiremock::MockServer, version: &str) -> usize {
+    let asset_path = format!("/download/v{version}/omg-{version}-{}", host_platform());
+    server
+        .received_requests()
+        .await
+        .expect("request recording is enabled on MockServer::start()")
+        .iter()
+        .filter(|request| request.method.as_str() == "GET" && request.url.path() == asset_path)
+        .count()
 }
 
 /// Backdate every file in `GROK_HOME/downloads` by ~2 hours.

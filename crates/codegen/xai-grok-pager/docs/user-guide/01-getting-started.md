@@ -1,6 +1,9 @@
 # Getting Started
 
-Grok Build is a terminal-based AI coding assistant from SpaceXAI. It runs as a TUI (Terminal User Interface) that understands your codebase, executes shell commands, edits files, searches the web, and manages tasks.
+OMG is an independent, unofficial multi-provider fork of Grok Build. It runs as
+a TUI (Terminal User Interface) that understands your codebase, executes shell
+commands, edits files, searches the web, and manages tasks. OMG is not
+published, maintained, endorsed, or supported by xAI or SpaceXAI.
 
 You can use it interactively as a full-screen TUI, run it headlessly for scripting and CI/CD, or integrate it into editors via the Agent Client Protocol (ACP).
 
@@ -17,7 +20,7 @@ curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/inst
 Install a specific version:
 
 ```bash
-curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash -s 0.1.0
+curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash -s 0.1.1
 ```
 
 Other platform installers and npm packaging remain in the source tree for
@@ -39,7 +42,7 @@ omg update
 
 ## First Launch
 
-Start oh-my-grok by running:
+Start OMG by running:
 
 ```bash
 omg
@@ -61,12 +64,12 @@ See [Authentication](02-authentication.md) for the full set of auth options incl
 
 ## Basic Interaction
 
-Once authenticated, Grok presents a full-screen TUI with two main areas:
+Once authenticated, OMG presents a full-screen TUI with two main areas:
 
-- **Scrollback** -- the conversation history showing your prompts, Grok's responses, tool calls, file edits, and more.
+- **Scrollback** -- the conversation history showing your prompts, OMG's responses, tool calls, file edits, and more.
 - **Prompt** -- the input area at the bottom where you type messages.
 
-Type a message and press `Enter` to send it. Grok reads files, runs commands, and edits code as needed. Each tool run streams into the scrollback in real time.
+Type a message and press `Enter` to send it. OMG reads files, runs commands, and edits code as needed. Each tool run streams into the scrollback in real time.
 
 Press `Tab` to move focus between the prompt and the scrollback. While a turn is running, `Ctrl+C` cancels it (or clears a non-empty draft first); `Esc` is a no-op mid-turn. Idle, press `Esc` twice within 800ms to clear a non-empty prompt, or (with an empty prompt and conversation messages) to open rewind — see [Keyboard Shortcuts](03-keyboard-shortcuts.md#escape). With the scrollback focused, use the arrow keys to select entries and to collapse or expand them. To navigate with `j`/`k` and fold with `h`/`l` instead, enable Vim mode.
 
@@ -89,7 +92,7 @@ The `@` operator opens a fuzzy file picker. By default it respects `.gitignore` 
 
 ### Permissions
 
-By default, Grok asks for permission before executing shell commands or editing files. You can approve individually or toggle always-approve mode:
+By default, OMG asks for permission before executing shell commands or editing files. You can approve individually or toggle always-approve mode:
 
 - Press `Ctrl+O` to toggle always-approve mode
 - Use the `--yolo` flag at launch: `omg --yolo`
@@ -112,8 +115,8 @@ Every conversation is a **session**. Sessions are automatically saved to `~/.oh-
 The scrollback is the main display area. It shows:
 
 - **User prompts** -- your messages, rendered as sticky headers
-- **Agent messages** -- Grok's responses with full markdown rendering and syntax highlighting
-- **Thinking blocks** -- Grok's reasoning process (collapsible)
+- **Agent messages** -- OMG's responses with full markdown rendering and syntax highlighting
+- **Thinking blocks** -- OMG's reasoning process (collapsible)
 - **Tool calls** -- file edits (with inline diffs), command executions, search results, and more
 - **Task lists** -- TODO items tracking progress
 
@@ -121,7 +124,7 @@ Collapse or expand the selected entry with the `Left`/`Right` arrow keys (or `h`
 
 ### Tools
 
-Grok has built-in tools for:
+OMG has built-in tools for:
 
 | Tool | Description |
 |------|-------------|
@@ -199,7 +202,7 @@ omg -p "Explain this codebase"
 
 ## Headless Mode
 
-Run Grok non-interactively for scripting, CI/CD, and automation:
+Run OMG non-interactively for scripting, CI/CD, and automation:
 
 ```bash
 omg -p "Your prompt here"
@@ -223,7 +226,7 @@ omg -p "Review changes for bugs" --output-format json --yolo | jq -r '.text'
 
 ## Project Rules (AGENTS.md)
 
-Add per-project instructions by creating an `AGENTS.md` file in your repository. Grok reads these files and injects their contents as a project-instructions message at the start of the conversation:
+Add per-project instructions by creating an `AGENTS.md` file in your repository. OMG reads these files and injects their contents as a project-instructions message at the start of the conversation:
 
 ```
 ~/.oh-my-grok/AGENTS.md           # Global rules (apply to all projects)
@@ -231,7 +234,7 @@ Add per-project instructions by creating an `AGENTS.md` file in your repository.
 <cwd>/AGENTS.md             # Directory-level rules (highest priority)
 ```
 
-Deeper files take precedence. Grok also reads `CLAUDE.md` files for compatibility.
+Deeper files take precedence. OMG also reads `CLAUDE.md` files for compatibility.
 
 ---
 

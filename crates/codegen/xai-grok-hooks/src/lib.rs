@@ -1,6 +1,6 @@
 //! # xai-grok-hooks
 //!
-//! Runtime hook system for Grok — file-based discovery, command execution,
+//! Runtime hook system for OMG — file-based discovery, command execution,
 //! and policy enforcement.
 //!
 //! ## Overview

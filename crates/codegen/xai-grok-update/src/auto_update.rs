@@ -51,6 +51,34 @@ pub struct UpdateStatus {
     pub error: Option<String>,
 }
 
+fn human_update_status_lines(status: &UpdateStatus) -> Vec<String> {
+    if let Some(error) = status.error.as_deref() {
+        return vec![
+            format!("OMG - v{} [{}]", status.current_version, status.channel),
+            format!("Update check failed: {error}"),
+        ];
+    }
+
+    let channel_label = format!(" [{}]", status.channel);
+    if status.update_available {
+        return vec![match status.latest_version.as_deref() {
+            Some(latest_version) => format!(
+                "A new version of OMG is available: {} -> {}{}",
+                status.current_version, latest_version, channel_label
+            ),
+            None => "A new version of OMG is available.".to_string(),
+        }];
+    }
+
+    vec![match status.latest_version.as_deref() {
+        Some(latest_version) => format!(
+            "OMG - v{} (latest: {}){}",
+            status.current_version, latest_version, channel_label
+        ),
+        None => format!("OMG - v{}{}", status.current_version, channel_label),
+    }]
+}
+
 /// Format and print an [`UpdateStatus`] to stdout.
 pub fn print_update_status(status: &UpdateStatus, json: bool) -> anyhow::Result<()> {
     if json {
@@ -59,38 +87,9 @@ pub fn print_update_status(status: &UpdateStatus, json: bool) -> anyhow::Result<
         return Ok(());
     }
 
-    if let Some(error) = status.error.as_deref() {
-        println!(
-            "Grok Build - v{} [{}]",
-            status.current_version, status.channel
-        );
-        println!("Update check failed: {error}");
-        return Ok(());
+    for line in human_update_status_lines(status) {
+        println!("{line}");
     }
-
-    let channel_label = format!(" [{}]", status.channel);
-
-    if status.update_available {
-        if let Some(latest_version) = status.latest_version.as_deref() {
-            println!(
-                "A new version of Grok Build is available: {} -> {}{}",
-                status.current_version, latest_version, channel_label
-            );
-        } else {
-            println!("A new version of Grok Build is available.");
-        }
-        return Ok(());
-    }
-
-    if let Some(latest_version) = status.latest_version.as_deref() {
-        println!(
-            "Grok Build - v{} (latest: {}){}",
-            status.current_version, latest_version, channel_label
-        );
-        return Ok(());
-    }
-
-    println!("Grok Build - v{}{}", status.current_version, channel_label);
     Ok(())
 }
 
@@ -514,7 +513,7 @@ pub async fn run_update_if_available(
     let channel_label = format!(" [{}]", update_config.channel);
     if auto_update {
         eprintln!(
-            "A new version of Grok Build is available: {} -> {}{}",
+            "A new version of OMG is available: {} -> {}{}",
             current_version, latest_version, channel_label
         );
         if interactive {
@@ -542,7 +541,7 @@ pub async fn run_update_if_available(
             return Ok(false);
         }
         eprintln!(
-            "A new version of Grok Build is available: {} -> {}{}",
+            "A new version of OMG is available: {} -> {}{}",
             current_version, latest_version, channel_label
         );
         if interactive {
@@ -647,7 +646,7 @@ pub fn restart_grok() -> Result<()> {
     }
     cmd.env_clear();
     cmd.envs(std::env::vars_os().filter(|(k, _)| k != "GROK_AUTO_UPDATE"));
-    eprintln!("Restarting Grok...");
+    eprintln!("Restarting OMG...");
 
     // Use exec on Unix to replace the current process, avoiding stdio issues
     // when the parent exits. On Windows, fall back to spawn + exit.
@@ -680,8 +679,16 @@ pub async fn run_install_script(
     update_config: &UpdateConfig,
 ) -> Result<()> {
     let result = match installer {
-        "npm" => anyhow::bail!("npm installation is disabled for oh-my-grok v1"),
-        "gh-release" => install_gh_release(target).await,
+        "npm" => anyhow::bail!(
+            "npm installation is disabled for oh-my-grok v1; install or update OMG through GitHub Releases"
+        ),
+        "gh-release" => {
+            let base_url = update_config
+                .gh_release_base_url
+                .as_deref()
+                .unwrap_or(crate::version::GH_RELEASE_BASE_URL);
+            install_gh_release_from_base(target, base_url).await
+        }
         _ => install_internal(target, update_config).await,
     };
     if result.is_ok() {
@@ -1904,13 +1911,6 @@ async fn verify_release_checksum(
     Ok(())
 }
 
-/// Download and install oh-my-grok from this fork's GitHub Releases.
-///
-/// Uses anonymous HTTPS to fetch the binary matching the current platform.
-async fn install_gh_release(target: Option<&str>) -> Result<()> {
-    install_gh_release_from_base(target, crate::version::GH_RELEASE_BASE_URL).await
-}
-
 #[doc(hidden)]
 pub async fn install_gh_release_from_base(target: Option<&str>, base_url: &str) -> Result<()> {
     let (os, arch) = detect_platform()?;
@@ -2206,7 +2206,7 @@ pub async fn run_update(
             anyhow::bail!("{e}");
         }
         eprintln!(
-            "Installing Grok {} (current: {})...",
+            "Installing OMG {} (current: {})...",
             version, current_version
         );
         eprintln!();
@@ -2219,8 +2219,8 @@ pub async fn run_update(
         {
             tracing::warn!("Failed to persist auto_update=false for pinned install: {e}");
         }
-        eprintln!("  ✓ grok v{} installed successfully!", version);
-        eprintln!("  Please restart Grok.");
+        eprintln!("  ✓ OMG v{} installed successfully!", version);
+        eprintln!("  Please restart OMG.");
         return Ok(Some(version.to_string()));
     }
 
@@ -2317,12 +2317,12 @@ pub async fn run_update(
         .unwrap_or(true)
     {
         eprintln!(
-            "Forcing reinstall of Grok {} (already up to date)",
+            "Forcing reinstall of OMG {} (already up to date)",
             effective_current
         );
         &effective_current
     } else {
-        eprintln!("Updating Grok {} → {}", effective_current, install_target);
+        eprintln!("Updating OMG {} → {}", effective_current, install_target);
         &install_target
     };
 
@@ -2334,10 +2334,10 @@ pub async fn run_update(
     let stable_ptr = try_fetch_stable_pointer().await;
     write_version_cache(target_version, stable_ptr.as_deref()).await;
     refresh_deployment_config().await;
-    eprintln!("  ✓ grok v{} installed successfully!", target_version);
+    eprintln!("  ✓ OMG v{} installed successfully!", target_version);
 
     if !force && std::env::var_os("GROK_AUTO_UPDATE").is_none() {
-        eprintln!("  Please restart Grok.");
+        eprintln!("  Please restart OMG.");
     }
     Ok(Some(target_version.to_string()))
 }
@@ -3378,9 +3378,7 @@ mod tests {
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // print_update_status — exercise both code paths via JSON serialization
-    // (the human path writes to stdout/stderr which is hard to capture
-    //  without altering the function signature).
+    // print_update_status and its pure human formatter.
     // ──────────────────────────────────────────────────────────────────────
 
     #[test]
@@ -3394,6 +3392,10 @@ mod tests {
     #[test]
     fn test_print_update_status_human_returns_ok_when_update_available() {
         let s = make_status();
+        assert_eq!(
+            human_update_status_lines(&s),
+            ["A new version of OMG is available: 0.1.150 -> 0.1.151 [stable]"]
+        );
         print_update_status(&s, false).unwrap();
     }
 
@@ -3408,6 +3410,7 @@ mod tests {
             auto_update: None,
             error: None,
         };
+        assert_eq!(human_update_status_lines(&s), ["OMG - v0.1.150 [stable]"]);
         print_update_status(&s, false).unwrap();
     }
 
@@ -3422,6 +3425,13 @@ mod tests {
             auto_update: Some(true),
             error: Some("network down".to_string()),
         };
+        assert_eq!(
+            human_update_status_lines(&s),
+            [
+                "OMG - v0.1.150 [stable]",
+                "Update check failed: network down"
+            ]
+        );
         print_update_status(&s, false).unwrap();
     }
 
@@ -3436,6 +3446,10 @@ mod tests {
             auto_update: Some(true),
             error: None,
         };
+        assert_eq!(
+            human_update_status_lines(&s),
+            ["OMG - v0.1.150 (latest: 0.1.150) [stable]"]
+        );
         print_update_status(&s, false).unwrap();
     }
 

@@ -318,7 +318,7 @@ async fn run_relay_loop(
                     target : crate ::instrumentation::TARGET, event =
                     "relay_disconnected", ws_url = % config.ws_url,
                 );
-                tprintln!("Disconnected from Grok WebSocket server");
+                tprintln!("Disconnected from the remote WebSocket server");
                 info!("WebSocket disconnected, will reconnect");
             }
             Err(e) => {
