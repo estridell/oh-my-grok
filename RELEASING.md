@@ -1,7 +1,8 @@
 # Releasing oh-my-grok
 
-oh-my-grok v1 publishes stable Linux and macOS binaries through GitHub
-Releases. npm and Windows packaging are intentionally inactive.
+oh-my-grok v1 currently publishes a Linux x86_64 binary through GitHub
+Releases. Other platforms, npm, and Windows packaging are intentionally
+inactive while the fork is single-user.
 
 ## Publish a release
 
@@ -13,16 +14,11 @@ Releases. npm and Windows packaging are intentionally inactive.
    git push origin v0.1.0
    ```
 
-3. The `Release` workflow validates the tag and builds `omg` natively on four
-   GitHub-hosted runners:
+3. The `Release` workflow validates the tag and builds the hardened
+   `linux-x86_64` `omg` binary on a GitHub-hosted runner.
 
-   - `linux-x86_64`
-   - `linux-aarch64`
-   - `macos-x86_64`
-   - `macos-aarch64`
-
-4. After every build passes its `--version` smoke test, the workflow creates a
-   draft release, uploads the four binaries plus `install.sh`, `version`, and
+4. After the build passes its `--version` smoke test, the workflow creates a
+   draft release, uploads the binary plus `install.sh`, `version`, and
    `SHA256SUMS`, then publishes it as the latest release.
 
 The tag version is injected at compile time with `GROK_VERSION`; inherited

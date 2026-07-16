@@ -31,19 +31,7 @@ jobs:
 
   build:
     needs: validate
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            platform: linux-x86_64
-          - runner: ubuntu-24.04-arm
-            platform: linux-aarch64
-          - runner: macos-15-intel
-            platform: macos-x86_64
-          - runner: macos-15
-            platform: macos-aarch64
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
       GROK_VERSION: ${{ needs.validate.outputs.version }}
@@ -51,13 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
+      - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler pkg-config libssl-dev
-
-      - name: Install macOS build dependencies
-        if: runner.os == 'macOS'
-        run: brew install protobuf
 
       - name: Build omg
         run: >-
@@ -68,7 +51,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          asset="omg-${GROK_VERSION}-${{ matrix.platform }}"
+          asset="omg-${GROK_VERSION}-linux-x86_64"
           cp target/release-dist/omg "dist/$asset"
           chmod +x "dist/$asset"
           output=$("dist/$asset" --version)
@@ -77,7 +60,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: omg-${{ matrix.platform }}
+          name: omg-linux-x86_64
           path: dist/omg-*
           if-no-files-found: error
 

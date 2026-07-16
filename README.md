@@ -42,7 +42,7 @@ runtime. It is synced periodically from the SpaceXAI monorepo.
 
 ## Installing the released binary
 
-Install the latest stable release on Linux or macOS:
+Install the latest stable release on Linux x86_64:
 
 ```sh
 curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash
@@ -57,7 +57,8 @@ curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/inst
 The installer verifies the release checksum, smoke-tests the binary, and
 installs `omg` and `oh-my-grok` under `~/.oh-my-grok/bin`. New stable GitHub
 Releases are detected by the CLI within its normal 30-minute update-check
-window. Windows and npm distribution are not active in v1.
+window. Other platforms and npm distribution are not active for future v1
+releases while the fork is single-user.
 
 ## Building from source
 

@@ -8,7 +8,7 @@ You can use it interactively as a full-screen TUI, run it headlessly for scripti
 
 ## Installation
 
-Install the latest stable oh-my-grok release on macOS or Linux:
+Install the latest stable oh-my-grok release on Linux x86_64:
 
 ```bash
 curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash
@@ -20,8 +20,8 @@ Install a specific version:
 curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash -s 0.1.0
 ```
 
-Windows installation is not supported in v1. npm packaging remains in the
-source tree for future work but is intentionally disabled.
+Other platform installers and npm packaging remain in the source tree for
+future work but are intentionally disabled while the fork is single-user.
 
 Verify the installation:
 
