@@ -682,7 +682,13 @@ pub async fn run_install_script(
         "npm" => anyhow::bail!(
             "npm installation is disabled for oh-my-grok v1; install or update OMG through GitHub Releases"
         ),
-        "gh-release" => install_gh_release(target).await,
+        "gh-release" => {
+            let base_url = update_config
+                .gh_release_base_url
+                .as_deref()
+                .unwrap_or(crate::version::GH_RELEASE_BASE_URL);
+            install_gh_release_from_base(target, base_url).await
+        }
         _ => install_internal(target, update_config).await,
     };
     if result.is_ok() {
@@ -1903,13 +1909,6 @@ async fn verify_release_checksum(
         anyhow::bail!("checksum mismatch for {asset}: expected {expected}, got {actual}");
     }
     Ok(())
-}
-
-/// Download and install oh-my-grok from this fork's GitHub Releases.
-///
-/// Uses anonymous HTTPS to fetch the binary matching the current platform.
-async fn install_gh_release(target: Option<&str>) -> Result<()> {
-    install_gh_release_from_base(target, crate::version::GH_RELEASE_BASE_URL).await
 }
 
 #[doc(hidden)]

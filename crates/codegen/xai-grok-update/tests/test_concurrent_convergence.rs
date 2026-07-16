@@ -18,7 +18,7 @@
 //!
 //! - **Convergence** (`ensure_latest_on_disk`, `run_update`): a sequential
 //!   updater finds the target already on disk and skips the download. The
-//!   artifact server / fake `gh` count downloads so the skip is asserted,
+//!   artifact server / local GitHub Release server count downloads so the skip is asserted,
 //!   not assumed.
 //! - **Race integrity** (`install_internal_from_base` run concurrently): the
 //!   same-instant race is accepted as rare; these tests pin the property
@@ -39,8 +39,8 @@ use serial_test::serial;
 
 use common::artifact_server::ArtifactServer;
 use common::{
-    FakeBinGuard, can_exec_shell_scripts, host_platform, make_update_config, reset_home,
-    set_test_version, small_good_artifact, test_home,
+    can_exec_shell_scripts, github_release_config, github_release_download_count, host_platform,
+    make_update_config, reset_home, set_test_version, small_good_artifact, test_home,
 };
 use xai_grok_update::auto_update::{ensure_latest_on_disk, install_internal_from_base, run_update};
 use xai_grok_update::version::installed_on_disk_version;
@@ -98,52 +98,16 @@ fn fake_managed_install(version: &str) {
     .unwrap();
 }
 
-/// Fake `gh` that logs argv to `<dir>/gh-args.log`, answers
-/// `release list --exclude-pre-releases` from `<dir>/gh-stable-only-stdout`,
-/// and for `release download ... --output <path>` writes a smoke-passing
-/// artifact to the output path.
-fn fake_gh_serving_releases(dir: &std::path::Path) -> String {
-    let dq = format!("'{}'", dir.to_string_lossy().replace('\'', "'\\''"));
-    format!(
-        r#"#!/bin/sh
-echo "$@" >> {dq}/gh-args.log
-case "$*" in
-  *"release list"*)
-    if [ -f {dq}/gh-stable-only-stdout ]; then cat {dq}/gh-stable-only-stdout; fi
-    ;;
-  *"release download"*)
-    out=""
-    prev=""
-    for a in "$@"; do
-      if [ "$prev" = "--output" ]; then out="$a"; fi
-      prev="$a"
-    done
-    if [ -n "$out" ]; then
-      printf '#!/bin/sh\nexit 0\n' > "$out"
-      chmod +x "$out"
-    fi
-    ;;
-esac
-exit 0
-"#
-    )
-}
-
-/// Count `release download` invocations in the fake gh's argv log.
-fn gh_download_count(g: &FakeBinGuard) -> usize {
-    g.args_log()
-        .iter()
-        .filter(|l| l.contains("release download"))
-        .count()
-}
-
-fn setup_gh_release(running_version: &str) -> FakeBinGuard {
+async fn setup_gh_release(
+    running_version: &str,
+    latest_version: &str,
+) -> (wiremock::MockServer, xai_grok_update::UpdateConfig) {
     let _ = test_home();
     reset_home();
     set_test_version(running_version);
     // SAFETY: serial_test ensures no race; reset_home clears this between tests.
     unsafe { std::env::set_var("GROK_INSTALLER", "gh-release") };
-    FakeBinGuard::install("gh", fake_gh_serving_releases)
+    github_release_config(latest_version).await
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,21 +119,22 @@ fn setup_gh_release(running_version: &str) -> FakeBinGuard {
 
 #[tokio::test]
 #[serial]
-#[ignore = "legacy gh CLI harness; OMG v1 resolves direct GitHub Release URLs"]
 async fn ensure_latest_downloads_once_then_converges_without_redownload() {
     if !can_exec_shell_scripts() {
         eprintln!("skipping: shell scripts cannot execute in this sandbox");
         return;
     }
-    let g = setup_gh_release("0.2.5");
-    g.set_stable_only_stdout("v0.2.7\n");
-    let cfg = make_update_config("stable");
+    let (server, cfg) = setup_gh_release("0.2.5", "0.2.7").await;
 
     // Pass 1: disk is empty → downloads and installs.
     let first = ensure_latest_on_disk(&cfg).await.unwrap();
     assert_eq!(first.installed.as_deref(), Some("0.2.7"));
     assert!(first.relaunch_needed, "running 0.2.5 < disk 0.2.7");
-    assert_eq!(gh_download_count(&g), 1, "first pass downloads");
+    assert_eq!(
+        github_release_download_count(&server, "0.2.7").await,
+        1,
+        "first pass downloads"
+    );
     assert_eq!(installed_on_disk_version().as_deref(), Some("0.2.7"));
 
     // Pass 2 (the pre-fix hourly re-download): disk already current →
@@ -179,7 +144,7 @@ async fn ensure_latest_downloads_once_then_converges_without_redownload() {
     assert_eq!(second.installed, None, "second pass must not re-download");
     assert!(second.relaunch_needed, "still running 0.2.5 < disk 0.2.7");
     assert_eq!(
-        gh_download_count(&g),
+        github_release_download_count(&server, "0.2.7").await,
         1,
         "hourly re-entry must not download again"
     );
@@ -193,18 +158,14 @@ async fn ensure_latest_downloads_once_then_converges_without_redownload() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "legacy gh CLI harness; OMG v1 resolves direct GitHub Release URLs"]
 async fn run_update_skips_download_when_disk_already_current() {
     if !can_exec_shell_scripts() {
         eprintln!("skipping: shell scripts cannot execute in this sandbox");
         return;
     }
-    let g = setup_gh_release("0.2.5");
-    g.set_stable_only_stdout("v0.2.7\n");
+    let (server, mut cfg) = setup_gh_release("0.2.5", "0.2.7").await;
     // Another process (TUI background download) already installed 0.2.7.
     fake_managed_install("0.2.7");
-    let mut cfg = make_update_config("stable");
-
     let result = run_update(false, None, None, &mut cfg).await.unwrap();
 
     assert_eq!(
@@ -214,7 +175,7 @@ async fn run_update_skips_download_when_disk_already_current() {
          signals stale leaders to relaunch"
     );
     assert_eq!(
-        gh_download_count(&g),
+        github_release_download_count(&server, "0.2.7").await,
         0,
         "a binary someone else installed must not be downloaded again"
     );
@@ -222,22 +183,19 @@ async fn run_update_skips_download_when_disk_already_current() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "legacy gh CLI harness; OMG v1 resolves direct GitHub Release URLs"]
 async fn run_update_force_still_redownloads_when_disk_current() {
     if !can_exec_shell_scripts() {
         eprintln!("skipping: shell scripts cannot execute in this sandbox");
         return;
     }
-    let g = setup_gh_release("0.2.7");
-    g.set_stable_only_stdout("v0.2.7\n");
+    let (server, mut cfg) = setup_gh_release("0.2.7", "0.2.7").await;
     fake_managed_install("0.2.7");
-    let mut cfg = make_update_config("stable");
 
     let result = run_update(true, None, None, &mut cfg).await.unwrap();
 
     assert_eq!(result.as_deref(), Some("0.2.7"));
     assert_eq!(
-        gh_download_count(&g),
+        github_release_download_count(&server, "0.2.7").await,
         1,
         "--force must bypass the disk-current skip and reinstall"
     );
@@ -252,73 +210,69 @@ async fn run_update_force_still_redownloads_when_disk_current() {
 // npm updates forever.
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn setup_npm(running_version: &str) -> FakeBinGuard {
+async fn setup_inherited_npm(
+    running_version: &str,
+    latest_version: &str,
+) -> (wiremock::MockServer, xai_grok_update::UpdateConfig) {
     let _ = test_home();
     reset_home();
     set_test_version(running_version);
     // SAFETY: serial_test ensures no race; reset_home clears this between tests.
     unsafe { std::env::set_var("GROK_INSTALLER", "npm") };
-    FakeBinGuard::install_npm()
+    github_release_config(latest_version).await
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "npm distribution is disabled for OMG v1"]
-async fn npm_update_not_suppressed_by_leftover_newer_internal_symlink() {
+async fn inherited_npm_update_converges_via_github_releases() {
     if !can_exec_shell_scripts() {
         eprintln!("skipping: shell scripts cannot execute in this sandbox");
         return;
     }
-    let g = setup_npm("0.2.5");
-    g.set_stdout("\"0.2.7\"\n");
-    // Leftover symlink from a previous internal install, claiming to be
-    // NEWER than the npm registry. It says nothing about the npm-managed
-    // global install and must be ignored for npm staleness decisions.
+    let (server, mut cfg) = setup_inherited_npm("0.2.5", "0.2.7").await;
+    // Inherited npm state migrates to the authoritative GitHub Release lane,
+    // so a newer leftover managed binary is intentionally rolled back.
     fake_managed_install("0.2.9");
-    let mut cfg = make_update_config("stable");
 
     let result = run_update(false, None, None, &mut cfg).await.unwrap();
 
     assert_eq!(
         result.as_deref(),
         Some("0.2.7"),
-        "npm update must proceed despite the lying leftover symlink"
+        "inherited npm state must converge through GitHub Releases"
     );
-    assert!(
-        g.args_log().iter().any(|l| l.contains("i -g")),
-        "npm install must actually run: {:?}",
-        g.args_log()
+    assert_eq!(
+        github_release_download_count(&server, "0.2.7").await,
+        1,
+        "migration must download the authoritative release"
     );
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "npm distribution is disabled for OMG v1"]
-async fn ensure_latest_npm_ignores_leftover_internal_symlink() {
+async fn inherited_npm_leader_converges_via_github_releases() {
     if !can_exec_shell_scripts() {
         eprintln!("skipping: shell scripts cannot execute in this sandbox");
         return;
     }
-    let g = setup_npm("0.2.5");
-    g.set_stdout("\"0.2.7\"\n");
+    let (server, cfg) = setup_inherited_npm("0.2.5", "0.2.7").await;
     fake_managed_install("0.2.9");
-    let cfg = make_update_config("stable");
 
     let outcome = ensure_latest_on_disk(&cfg).await.unwrap();
 
     assert_eq!(
         outcome.installed.as_deref(),
         Some("0.2.7"),
-        "npm leader pass must install despite the lying leftover symlink"
+        "leader must migrate inherited npm state to GitHub Releases"
     );
     assert!(
         outcome.relaunch_needed,
         "running 0.2.5 < freshly installed 0.2.7"
     );
-    assert!(
-        g.args_log().iter().any(|l| l.contains("i -g")),
-        "npm install must actually run: {:?}",
-        g.args_log()
+    assert_eq!(
+        github_release_download_count(&server, "0.2.7").await,
+        1,
+        "leader migration must download the authoritative release"
     );
 }
 
@@ -360,7 +314,6 @@ async fn disk_probe_rejects_dangling_symlink() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "legacy gh CLI harness; OMG v1 resolves direct GitHub Release URLs"]
 async fn ensure_latest_repairs_dangling_symlink_by_downloading() {
     if !can_exec_shell_scripts() {
         eprintln!("skipping: shell scripts cannot execute in this sandbox");
@@ -369,14 +322,11 @@ async fn ensure_latest_repairs_dangling_symlink_by_downloading() {
     // Dangling symlink + stale running process: the probe returns None, so
     // the decision falls back to the running version and the download runs,
     // repairing the install instead of wedging on "already up to date".
-    let g = setup_gh_release("0.2.5");
-    g.set_stable_only_stdout("v0.2.7\n");
+    let (server, cfg) = setup_gh_release("0.2.5", "0.2.7").await;
     let home = test_home();
     let platform = host_platform();
     fake_managed_install("0.2.7");
     std::fs::remove_file(home.join("downloads").join(format!("omg-0.2.7-{platform}"))).unwrap();
-    let cfg = make_update_config("stable");
-
     let outcome = ensure_latest_on_disk(&cfg).await.unwrap();
 
     assert_eq!(
@@ -384,7 +334,7 @@ async fn ensure_latest_repairs_dangling_symlink_by_downloading() {
         Some("0.2.7"),
         "dangling symlink must be repaired by an actual download"
     );
-    assert_eq!(gh_download_count(&g), 1);
+    assert_eq!(github_release_download_count(&server, "0.2.7").await, 1);
     assert_eq!(
         installed_on_disk_version().as_deref(),
         Some("0.2.7"),
@@ -396,7 +346,7 @@ async fn ensure_latest_repairs_dangling_symlink_by_downloading() {
 // Race integrity: the accepted same-instant race must stay harmless. Two (or
 // three) installers running concurrently — even for DIFFERENT versions —
 // must never leave a corrupt active binary. Pre-fix, all 0.1.x downloads
-// shared one `grok-0.1.tmp`, so a concurrent racer could atomically rename a
+// shared one `omg-0.1.tmp`, so a concurrent racer could atomically rename a
 // half-written file into place.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -493,7 +443,7 @@ async fn concurrent_different_version_installs_do_not_corrupt_each_other() {
 
     // No stray shared temp file left behind (the pre-fix collision name).
     assert!(
-        !home.join("downloads").join("grok-0.1.tmp").exists(),
+        !home.join("downloads").join("omg-0.1.tmp").exists(),
         "the pre-fix shared temp name must not exist"
     );
 }

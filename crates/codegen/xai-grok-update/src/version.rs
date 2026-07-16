@@ -40,6 +40,10 @@ pub struct UpdateConfig {
     pub channel: String,
     /// Custom npm registry URL. When set, passed as `--registry=` to npm CLI.
     pub npm_registry: Option<String>,
+    /// GitHub Releases base URL. Production uses the fork repository; tests
+    /// override this with a local server so update flows stay hermetic.
+    #[doc(hidden)]
+    pub gh_release_base_url: Option<String>,
 }
 
 impl UpdateConfig {
@@ -51,6 +55,7 @@ impl UpdateConfig {
             alpha_test_key: None,
             channel: "stable".to_string(),
             npm_registry: None,
+            gh_release_base_url: None,
         }
     }
 }
@@ -320,7 +325,13 @@ async fn fetch_gcs_channel_pointer(channel: &str, base_url: &str) -> Result<Stri
 pub async fn fetch_latest_version(installer: &str, config: &UpdateConfig) -> Result<String> {
     match installer {
         "npm" => fetch_npm_version(&config.channel, config.npm_registry.as_deref()).await,
-        "gh-release" => fetch_gh_release_version(&config.channel).await,
+        "gh-release" => {
+            let base_url = config
+                .gh_release_base_url
+                .as_deref()
+                .unwrap_or(GH_RELEASE_BASE_URL);
+            fetch_gh_release_version_from_base(&config.channel, base_url).await
+        }
         _ => fetch_gcs_version(&config.channel).await,
     }
 }
