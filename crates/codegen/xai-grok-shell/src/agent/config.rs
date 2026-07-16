@@ -1752,7 +1752,7 @@ impl Default for Config {
             default_yolo_mode: false,
             default_auto_mode: false,
             agent_profile_path: None,
-            client_version: Some(xai_grok_version::VERSION.to_string()),
+            client_version: Some(xai_grok_version::XAI_PROTOCOL_VERSION.to_string()),
             mode: AgentMode::default(),
             remote_settings: None,
             cli_agents: Vec::new(),

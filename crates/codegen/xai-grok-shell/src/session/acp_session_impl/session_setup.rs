@@ -386,7 +386,10 @@ impl SessionActor {
         let mut request = middleware_client
             .get(&url)
             .header("X-XAI-Token-Auth", "xai-grok-cli")
-            .header("x-grok-client-version", xai_grok_version::VERSION)
+            .header(
+                "x-grok-client-version",
+                xai_grok_version::XAI_PROTOCOL_VERSION,
+            )
             .header(
                 crate::http::CLIENT_MODE_HEADER,
                 crate::http::process_client_mode(),

@@ -130,6 +130,13 @@ pub fn stream_responses<'a>(
         let mut output_to_tool_index: BTreeMap<u32, u32> = BTreeMap::new();
         let mut next_tool_index: u32 = 0;
 
+        // Some Responses-compatible backends, including the Codex endpoint,
+        // leave `response.output` empty in the terminal frame and send the
+        // authoritative items only through `response.output_item.done`.
+        // Retain those items so the collected response has the same content
+        // that was already emitted through streaming deltas.
+        let mut completed_output_items: BTreeMap<u32, rs::OutputItem> = BTreeMap::new();
+
         let mut stream = raw_stream;
         loop {
             let event_result = match tokio::time::timeout(idle_timeout, stream.next()).await {
@@ -373,6 +380,7 @@ pub fn stream_responses<'a>(
                         }
                         _ => {}
                     }
+                    completed_output_items.insert(done_event.output_index, done_event.item);
                 }
 
                 // CustomToolCallInputDelta is x_search in-progress streaming.
@@ -428,6 +436,10 @@ pub fn stream_responses<'a>(
                 return;
             }
         };
+
+        if response.output.is_empty() && !completed_output_items.is_empty() {
+            response.output = completed_output_items.into_values().collect();
+        }
 
         // Billing fields (`prompt_tokens`, `completion_tokens`,
         // `cached_prompt_tokens`, `reasoning_tokens`) are the cumulative
@@ -594,6 +606,25 @@ mod tests {
         })
     }
 
+    fn output_item_done_event(text: &str) -> rs::ResponseStreamEvent {
+        rs::ResponseStreamEvent::ResponseOutputItemDone(rs_types::ResponseOutputItemDoneEvent {
+            sequence_number: 0,
+            output_index: 0,
+            item: rs_types::OutputItem::Message(rs_types::OutputMessage {
+                content: vec![rs_types::OutputMessageContent::OutputText(
+                    rs_types::OutputTextContent {
+                        text: text.into(),
+                        annotations: vec![],
+                        logprobs: None,
+                    },
+                )],
+                id: "msg-1".into(),
+                role: rs_types::AssistantRole::Assistant,
+                status: rs_types::OutputStatus::Completed,
+            }),
+        })
+    }
+
     async fn collect(s: impl Stream<Item = SamplingEvent>) -> Vec<SamplingEvent> {
         let mut out = Vec::new();
         let mut s = pin!(s);
@@ -653,6 +684,40 @@ mod tests {
         match events.last().unwrap() {
             SamplingEvent::Completed { response, .. } => {
                 assert_eq!(response.stop_reason, Some(StopReason::Stop));
+            }
+            other => panic!("expected Completed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn output_item_done_populates_sparse_completed_response() {
+        let raw = stream::iter(vec![
+            Ok(text_delta_event("hello")),
+            Ok(output_item_done_event("hello")),
+            Ok(completed_event()),
+        ])
+        .boxed();
+        let events = collect(stream_responses(
+            raw,
+            None,
+            rid(),
+            Duration::from_secs(60),
+            None,
+        ))
+        .await;
+
+        match events.last().unwrap() {
+            SamplingEvent::Completed { response, .. } => {
+                assert_eq!(response.empty_reason(), None);
+                let assistant = response
+                    .items
+                    .iter()
+                    .find_map(|item| match item {
+                        ConversationItem::Assistant(assistant) => Some(assistant),
+                        _ => None,
+                    })
+                    .expect("assistant item");
+                assert_eq!(assistant.content.as_ref(), "hello");
             }
             other => panic!("expected Completed, got {other:?}"),
         }

@@ -1102,7 +1102,7 @@ impl StorageClient {
         let version = self
             .client_version
             .as_deref()
-            .unwrap_or(xai_grok_version::VERSION);
+            .unwrap_or(xai_grok_version::XAI_PROTOCOL_VERSION);
         let mut builder = builder.header("x-grok-client-version", version);
 
         if let Some(id) = &self.client_identifier {
@@ -1978,7 +1978,10 @@ async fn upload_part_streaming(
         let mut request = client
             .post(&url)
             .header("Content-Type", "application/octet-stream")
-            .header("x-grok-client-version", xai_grok_version::VERSION)
+            .header(
+                "x-grok-client-version",
+                xai_grok_version::XAI_PROTOCOL_VERSION,
+            )
             .header("Content-Length", length.to_string());
         for (name, value) in crate::trace_context::trace_context_headers().iter() {
             request = request.header(name.clone(), value.clone());

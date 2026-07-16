@@ -1172,7 +1172,7 @@ fn inject_proxy_headers(
         .or_insert_with(|| {
             client_version
                 .map(String::from)
-                .unwrap_or_else(|| xai_grok_version::VERSION.to_string())
+                .unwrap_or_else(|| xai_grok_version::XAI_PROTOCOL_VERSION.to_string())
         });
     if crate::util::is_cli_chat_proxy_url(base_url) {
         headers

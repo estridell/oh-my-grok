@@ -486,8 +486,12 @@ Manage personas -- create, edit, and delete personas. A subagent can apply a per
 Log in or re-authenticate with your account without leaving the session.
 
 ```
-/login
+/login xai
+/login chatgpt
 ```
+
+The X flow and ChatGPT OAuth are independent, so re-running either command
+reauthenticates that provider without changing the other provider's route.
 
 ### `/logout`
 

@@ -9,6 +9,16 @@ pub const VERSION: &str = match option_env!("GROK_VERSION") {
     None => env!("CARGO_PKG_VERSION"),
 };
 
+/// Upstream Grok CLI version advertised to xAI services.
+///
+/// The fork has its own release version, but xAI's proxy uses this value for
+/// protocol compatibility gating. Keep it aligned with the upstream revision
+/// we are based on when merging upstream changes.
+pub const XAI_PROTOCOL_VERSION: &str = match option_env!("GROK_UPSTREAM_VERSION") {
+    Some(v) => v,
+    None => "0.2.82",
+};
+
 /// [`TEST_VERSION_ENV`] override first, then [`VERSION`]. Trimmed so
 /// non-semver-aware callers can pass the result straight into parsing.
 pub fn installed() -> String {

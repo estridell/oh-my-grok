@@ -47,7 +47,9 @@ impl SlashCommand for LoginCommand {
 
     fn run(&self, _ctx: &mut CommandExecCtx, args: &str) -> CommandResult {
         match args.trim().to_ascii_lowercase().as_str() {
-            "" | "x" | "xai" | "grok" => CommandResult::Action(Action::Login),
+            "" | "x" | "xai" | "grok" => CommandResult::Action(Action::LoginWithMethod(
+                acp::AuthMethodId::new(xai_grok_shell::agent::auth_method::GROK_COM_METHOD_ID),
+            )),
             "chatgpt" | "openai" | "codex" | "openai-codex" => {
                 CommandResult::Action(Action::LoginWithMethod(acp::AuthMethodId::new(
                     xai_grok_shell::auth::chatgpt::AUTH_METHOD_ID,

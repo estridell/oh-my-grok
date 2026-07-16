@@ -379,12 +379,29 @@ impl ModelsManager {
             models.clone()
         };
 
+        let xai_available = self.xai_provider_available();
+        let chatgpt_available = crate::auth::chatgpt::is_configured();
         let selectable: IndexMap<_, _> = snapshot
             .into_iter()
-            .filter(|(_, e)| e.info.user_selectable)
+            .filter(|(_, e)| {
+                e.info.user_selectable
+                    && if matches!(e.info.api_backend, ApiBackend::CodexResponses) {
+                        chatgpt_available
+                    } else {
+                        xai_available || e.has_own_credentials()
+                    }
+            })
             .collect();
 
         available_models(&selectable, self.is_session_auth())
+    }
+
+    fn xai_provider_available(&self) -> bool {
+        let cfg = self.inner.cfg.read();
+        self.inner.auth_manager.current_or_expired().is_some()
+            || crate::agent::auth_method::has_xai_api_key_env()
+            || cfg.endpoints.deployment_key.is_some()
+            || cfg.endpoints.has_custom_endpoint()
     }
 
     pub(crate) fn task_model_error(&self, requested: &str) -> Option<String> {
@@ -394,7 +411,13 @@ impl ModelsManager {
     }
 
     pub fn current_model_id(&self) -> acp::ModelId {
-        self.inner.current_model_id.read().clone()
+        let configured = self.inner.current_model_id.read().clone();
+        let available = self.available();
+        if available.contains_key(&configured) {
+            configured
+        } else {
+            available.keys().next().cloned().unwrap_or(configured)
+        }
     }
 
     pub fn set_current_model_id(&self, id: acp::ModelId) {
@@ -601,6 +624,7 @@ impl ModelsManager {
             && fetch_auth == ModelFetchAuth::Session
         {
             self.clear();
+            self.notify_models_updated();
             return;
         }
 
@@ -919,7 +943,8 @@ impl ModelsManager {
     /// Wipe in-memory state so a previous identity's catalog doesn't leak.
     fn clear(&self) {
         *self.inner.prefetched.write() = None;
-        *self.inner.models.write() = IndexMap::new();
+        let cfg = self.inner.cfg.read().clone();
+        *self.inner.models.write() = resolve_model_catalog(&cfg, None);
         *self.inner.etag.write() = None;
         *self.inner.has_fetched_real_catalog.write() = false;
         self.inner
@@ -2071,12 +2096,17 @@ mod tests {
         // refresh_async bails at the auth check without needing a tokio runtime.
         let tmp = std::env::temp_dir().join("grok-test-models-manager");
         let auth_manager = Arc::new(AuthManager::new(&tmp, GrokComConfig::default()));
+        let mut cfg = config::Config::default();
+        // Most model-manager tests exercise catalog mechanics rather than
+        // provider auth. A configured custom endpoint makes their xAI fixtures
+        // available without relying on process-global credentials.
+        cfg.endpoints.models_base_url = Some("http://localhost/v1".to_string());
         ModelsManager::new(
             None,
             IndexMap::new(),
             acp::ModelId::new("default"),
             auth_manager,
-            config::Config::default(),
+            cfg,
         )
     }
 
