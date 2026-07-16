@@ -40,7 +40,7 @@ Compress conversation history to save context window space. Optionally specify w
 /compact keep the auth implementation details
 ```
 
-When the context window fills up, Grok auto-compacts at 85% usage (configurable via `[session] auto_compact_threshold_percent` in config.toml).
+When the context window fills up, OMG auto-compacts at 85% usage (configurable via `[session] auto_compact_threshold_percent` in config.toml).
 
 ### `/context`
 
@@ -212,7 +212,7 @@ Reopen the current session in the other render mode. `/minimal` (offered in
 fullscreen) switches to the experimental scrollback-native mode; `/fullscreen`
 (offered in minimal; alias `/full`) switches back to the standard alt-screen
 TUI. Both relaunch the pager on the same conversation and are **sticky**: the
-choice persists to `[ui].screen_mode` in `config.toml`, so future plain `grok`
+choice persists to `[ui].screen_mode` in `config.toml`, so future plain `omg`
 launches open in whatever mode was last used. The `--minimal` / `--fullscreen`
 CLI flags do the same thing at launch time.
 
@@ -351,7 +351,7 @@ Generate a video from an image or text description. Plans shots, generates sourc
 
 ### `/loop [interval] <prompt>`
 
-Run a prompt on a recurring interval. Specify the interval as `30m`, `1 hour`, or `every 2 days`. If you omit it, Grok prompts you.
+Run a prompt on a recurring interval. Specify the interval as `30m`, `1 hour`, or `every 2 days`. If you omit it, OMG prompts you.
 
 ```
 /loop 30m check deploy status
@@ -368,7 +368,7 @@ Recurring tasks auto-expire after 7 days. Cancel with `scheduler_delete` (the jo
 
 ### `/goal`
 
-Set, manage, or check an autonomous goal. Grok works toward the objective across turns and reports progress.
+Set, manage, or check an autonomous goal. OMG works toward the objective across turns and reports progress.
 
 ```
 /goal Migrate the auth module to the new API
@@ -543,7 +543,7 @@ Toggle message timestamps on or off.
 
 ## Skills as Slash Commands
 
-Any enabled skill with `user-invocable: true` in its SKILL.md frontmatter appears as a slash command. (A skill turned off via `/skills` is not advertised.) For example, if you have a skill at `~/.grok/skills/commit/SKILL.md`, you can invoke it with:
+Any enabled skill with `user-invocable: true` in its SKILL.md frontmatter appears as a slash command. (A skill turned off via `/skills` is not advertised.) For example, if you have a skill at `~/.oh-my-grok/skills/commit/SKILL.md`, you can invoke it with:
 
 ```
 /commit fix typo in README

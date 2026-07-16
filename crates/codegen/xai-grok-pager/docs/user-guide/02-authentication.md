@@ -1,6 +1,6 @@
 # Authentication
 
-Grok supports several authentication methods, including interactive browser login, enterprise single sign-on (SSO), and headless CI/CD runners.
+OMG supports several authentication methods, including interactive browser login, enterprise single sign-on (SSO), and headless CI/CD runners.
 
 ---
 
@@ -37,10 +37,10 @@ For CI/CD, automation, or environments without browser access, use an API key fr
 
 ```bash
 export XAI_API_KEY="xai-..."
-grok
+omg
 ```
 
-Grok uses the API key as a fallback when no session token is active. If you have already signed in interactively, the stored session token takes precedence. To fall back to the API key, run `grok logout` or delete `~/.grok/auth.json`.
+OMG uses the API key as a fallback when no session token is active. If you have already signed in interactively, the stored session token takes precedence. To fall back to the API key, run `omg logout` or delete `~/.oh-my-grok/auth.json`.
 
 ---
 
@@ -51,7 +51,7 @@ Authenticate developers through your own Identity Provider (IdP) -- such as Okta
 ### 1. Register a public client in your IdP
 
 - Grant type: Authorization Code with PKCE (Proof Key for Code Exchange)
-- Redirect URI: `http://127.0.0.1/callback` -- a loopback address. Grok binds a random port at sign-in time, and most IdPs treat the loopback redirect as port-agnostic per [RFC 8252](https://tools.ietf.org/html/rfc8252).
+- Redirect URI: `http://127.0.0.1/callback` -- a loopback address. OMG binds a random port at sign-in time, and most IdPs treat the loopback redirect as port-agnostic per [RFC 8252](https://tools.ietf.org/html/rfc8252).
 - No client secret. PKCE replaces it.
 
 ### 2. Configure the CLI
@@ -59,7 +59,7 @@ Authenticate developers through your own Identity Provider (IdP) -- such as Okta
 Via config file:
 
 ```toml
-# ~/.grok/config.toml
+# ~/.oh-my-grok/config.toml
 [grok_com_config.oidc]
 issuer = "https://acme.okta.com"
 client_id = "0oa1b2c3d4e5f6g7h8i9"
@@ -78,9 +78,9 @@ You can also override the API endpoint to point at your own proxy:
 export GROK_CLI_CHAT_PROXY_BASE_URL="https://grok-proxy.acme.com/v1"
 ```
 
-### 3. Run `grok`
+### 3. Run `omg`
 
-The CLI discovers endpoints via `{issuer}/.well-known/openid-configuration`, opens the IdP login page, and stores tokens in `~/.grok/auth.json`. Tokens auto-refresh silently via the stored `refresh_token`.
+The CLI discovers endpoints via `{issuer}/.well-known/openid-configuration`, opens the IdP login page, and stores tokens in `~/.oh-my-grok/auth.json`. Tokens auto-refresh silently via the stored `refresh_token`.
 
 ### Optional fields
 
@@ -99,7 +99,7 @@ When browser-based login isn't possible -- for example, on sandboxed VMs, CI run
 
 ```
 +--------------+     sh -c     +------------------------+
-|     Grok     |-------------->|  your auth binary      |
+|     OMG     |-------------->|  your auth binary      |
 |              |               |                        |
 |  reads       |<-- stdout ----|  prints token          |
 |  auth.json   |               |                        |
@@ -107,20 +107,20 @@ When browser-based login isn't possible -- for example, on sandboxed VMs, CI run
 +--------------+               +------------------------+
 ```
 
-1. Grok runs your command via `sh -c "<command>"`
+1. OMG runs your command via `sh -c "<command>"`
 2. Your binary runs whatever auth flow it needs (SSO, device code, certificate exchange)
-3. **stderr** carries human-readable output, such as login URLs and status messages. Grok reads stderr and surfaces it to the user; in the TUI, it turns the first `https://` URL into a clickable sign-in link.
-4. **stdout** is captured by Grok and saved as the access token
-5. Exit 0 = success; exit non-zero = Grok falls back to interactive login
+3. **stderr** carries human-readable output, such as login URLs and status messages. OMG reads stderr and surfaces it to the user; in the TUI, it turns the first `https://` URL into a clickable sign-in link.
+4. **stdout** is captured by OMG and saved as the access token
+5. Exit 0 = success; exit non-zero = OMG falls back to interactive login
 
 ### The stdout / stderr Contract
 
 | Stream | What to print | Who sees it |
 |--------|---------------|-------------|
-| **stdout** | The token -- nothing else | Grok (parsed and stored in auth.json) |
-| **stderr** | Login URLs, status messages, errors | The user (Grok reads stderr and shows the sign-in URL as a clickable link in the TUI) |
+| **stdout** | The token -- nothing else | OMG (parsed and stored in auth.json) |
+| **stderr** | Login URLs, status messages, errors | The user (OMG reads stderr and shows the sign-in URL as a clickable link in the TUI) |
 
-**Do not print anything to stdout except the token.** No progress messages, no debug output. Grok reads stdout, trims surrounding whitespace, and parses the result as a token.
+**Do not print anything to stdout except the token.** No progress messages, no debug output. OMG reads stdout, trims surrounding whitespace, and parses the result as a token.
 
 ### stdout Token Format
 
@@ -136,14 +136,14 @@ eyJhbGciOiJSUzI1NiIs...
 {"access_token": "eyJhbGciOi...", "refresh_token": "ref-tok", "expires_in": 3600}
 ```
 
-Use JSON if your tokens expire and you want Grok to automatically re-run the binary before expiry.
+Use JSON if your tokens expire and you want OMG to automatically re-run the binary before expiry.
 
 ### Configuration
 
 Via config file:
 
 ```toml
-# ~/.grok/config.toml
+# ~/.oh-my-grok/config.toml
 [auth]
 auth_provider_command = "/usr/local/bin/my-auth-provider"
 auth_provider_label = "Acme Corp"   # optional -- customizes the TUI login button
@@ -160,7 +160,7 @@ export GROK_AUTH_TOKEN_TTL=3600
 
 ### Token Refresh
 
-When Grok needs to refresh an expired token, it re-runs your binary with `GROK_AUTH_EXPIRED=1` set in the environment. Your binary can use this to take a faster silent-refresh path:
+When OMG needs to refresh an expired token, it re-runs your binary with `GROK_AUTH_EXPIRED=1` set in the environment. Your binary can use this to take a faster silent-refresh path:
 
 ```bash
 #!/bin/sh
@@ -187,7 +187,7 @@ echo "{\"access_token\": \"$TOKEN\", \"expires_in\": 3600}"
 | `GROK_AUTH_PROVIDER_COMMAND` | Path to your auth binary |
 | `GROK_AUTH_PROVIDER_LABEL` | Display name on the TUI login screen (e.g., "Acme Corp") |
 | `GROK_AUTH_TOKEN_TTL` | Token lifetime in seconds (for bare-string tokens without `expires_in`) |
-| `GROK_AUTH_EXPIRED` | Set to `1` by Grok when re-running the binary for token refresh |
+| `GROK_AUTH_EXPIRED` | Set to `1` by OMG when re-running the binary for token refresh |
 | `GROK_AUTH_EARLY_INVALIDATION_SECS` | Seconds before expiry to proactively refresh (default: 300) |
 
 ---
@@ -197,10 +197,10 @@ echo "{\"access_token\": \"$TOKEN\", \"expires_in\": 3600}"
 For headless environments (SSH sessions, Docker containers, remote VMs) where no browser is available locally:
 
 ```bash
-grok login --device-auth    # or: grok login --device-code
+omg login --device-auth    # or: omg login --device-code
 ```
 
-This prints a URL and code to the terminal. Open the URL on any device, enter the code, and complete authentication. Grok polls until the login is confirmed.
+This prints a URL and code to the terminal. Open the URL on any device, enter the code, and complete authentication. OMG polls until the login is confirmed.
 
 You can also implement the device-code flow through an [External Auth Provider](#external-auth-provider) for full control.
 
@@ -208,11 +208,11 @@ You can also implement the device-code flow through an [External Auth Provider](
 
 ## Automatic Credential Refresh
 
-Grok automatically refreshes expired credentials:
+OMG automatically refreshes expired credentials:
 
-- **Before expiry:** If your auth provider returned `expires_in` (JSON output) or you set `auth_token_ttl`, Grok re-runs the auth binary ~5 minutes before expiry.
-- **On auth error:** If the server returns 401 Unauthorized, Grok refreshes the credentials and retries the request.
-- **OIDC:** If a `refresh_token` is available, Grok silently refreshes via your IdP without re-opening the browser.
+- **Before expiry:** If your auth provider returned `expires_in` (JSON output) or you set `auth_token_ttl`, OMG re-runs the auth binary ~5 minutes before expiry.
+- **On auth error:** If the server returns 401 Unauthorized, OMG refreshes the credentials and retries the request.
+- **OIDC:** If a `refresh_token` is available, OMG silently refreshes via your IdP without re-opening the browser.
 
 Tune the refresh buffer:
 
@@ -228,19 +228,19 @@ export GROK_AUTH_EARLY_INVALIDATION_SECS=0
 
 ## Hot Reload
 
-Grok picks up changes to `~/.grok/auth.json` automatically. If you update credentials externally (for example, with a script that writes new tokens), Grok uses the new credentials on the next API call without a restart.
+OMG picks up changes to `~/.oh-my-grok/auth.json` automatically. If you update credentials externally (for example, with a script that writes new tokens), OMG uses the new credentials on the next API call without a restart.
 
 ---
 
 ## Auth Precedence
 
-Grok resolves credentials for each request in this order, highest to lowest:
+OMG resolves credentials for each request in this order, highest to lowest:
 
 1. **Per-model `api_key` or `env_key`** -- set under `[model.<name>]` in `config.toml`. Wins whenever present.
-2. **Active session token** -- obtained through browser, OIDC/OAuth2, or external-provider login and stored in `~/.grok/auth.json`.
+2. **Active session token** -- obtained through browser, OIDC/OAuth2, or external-provider login and stored in `~/.oh-my-grok/auth.json`.
 3. **`XAI_API_KEY`** -- fallback when no session token is active.
 
-When more than one login flow is configured, Grok populates the session token from the first available source, highest to lowest:
+When more than one login flow is configured, OMG populates the session token from the first available source, highest to lowest:
 
 1. **External auth provider** (`auth_provider_command`)
 2. **Enterprise OIDC** -- when OIDC is configured, through `[grok_com_config.oidc]` in `config.toml` or the `GROK_OIDC_ISSUER` and `GROK_OIDC_CLIENT_ID` environment variables
@@ -259,8 +259,8 @@ Set `RUST_LOG` to control the verbosity of the file log and headless stderr outp
 In the TUI, set `GROK_LOG_FILE` to an absolute path to write logs to that file:
 
 ```bash
-GROK_LOG_FILE=/tmp/grok.log RUST_LOG=debug grok
-tail -f /tmp/grok.log
+GROK_LOG_FILE=/tmp/omg.log RUST_LOG=debug omg
+tail -f /tmp/omg.log
 ```
 
 `GROK_LOG_FILE` is treated as a literal file path. A relative value such as `1` writes a file named `1` in the current directory.
@@ -268,22 +268,22 @@ tail -f /tmp/grok.log
 In headless mode, logs go to stderr. Redirect them to a file:
 
 ```bash
-RUST_LOG=debug grok -p "hello" 2> /tmp/grok.log
+RUST_LOG=debug omg -p "hello" 2> /tmp/omg.log
 ```
 
 ### Common log messages
 
 | Log message | What it means |
 |-------------|---------------|
-| `auth: running external auth provider` | Grok is running your binary |
-| `auth: external auth provider returned fresh token` | Grok parsed and stored the token |
+| `auth: running external auth provider` | OMG is running your binary |
+| `auth: external auth provider returned fresh token` | OMG parsed and stored the token |
 | `auth: external auth provider failed` | Binary exited non-zero or stdout was empty |
 | `auth: external auth provider timed out (likely needs interactive auth), killing` | Binary did not exit before the timeout and was killed |
 | `auth: failed to start external auth provider` | Command could not be spawned (binary not found) |
 
 ### Common fixes
 
-- **"Authentication failed"** -- Run `grok logout` to clear cached credentials, then `grok login` to sign in again.
+- **"Authentication failed"** -- Run `omg logout` to clear cached credentials, then `omg login` to sign in again.
 - **Token expires too quickly** -- Set `auth_token_ttl` or return `expires_in` in your auth provider's JSON output.
 - **OIDC redirect fails** -- Ensure your IdP allows loopback redirect URIs (`http://127.0.0.1/callback`).
 - **External auth provider not found** -- Check that the `auth_provider_command` path is correct and the binary is executable.

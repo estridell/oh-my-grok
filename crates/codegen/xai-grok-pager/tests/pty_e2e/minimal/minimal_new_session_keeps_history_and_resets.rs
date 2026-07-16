@@ -16,7 +16,7 @@ use crate::common::*;
 #[ignore]
 async fn minimal_new_session_keeps_history_and_resets() {
     /// Substring printed once per minimal welcome card (see `minimal::welcome`).
-    const WELCOME_BANNER: &str = "Grok Build";
+    const WELCOME_BANNER: &str = "OMG";
 
     let content = ContentController::start().await.expect("start content");
     // Code-block rows (not prose, which markdown-reflows to fit on screen) so

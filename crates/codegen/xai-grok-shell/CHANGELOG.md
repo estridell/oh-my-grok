@@ -1,5 +1,10 @@
 # Changelog
 
+> This file preserves the upstream Grok Build changelog for source provenance.
+> Product names and commands in the historical entries refer to the upstream
+> project, not OMG. Fork releases are documented on the
+> [oh-my-grok releases page](https://github.com/estridell/oh-my-grok/releases).
+
 # 0.2.101 — 2026-07-13
 
 ## Features
@@ -4849,5 +4854,4 @@
 - **More reliable long streaming requests** use per-sampling HTTP clients with keep-alive tuning instead of a shared global client.
 - **Startup stability for external instruction files** avoids gitignore panics by skipping ignore checks for paths outside the repository root.
 - **Tool-call protocol compliance** now emits cancellation and rejection outputs for unexecuted tools, preventing model errors when expected tool results are missing.
-
 

@@ -93,7 +93,7 @@ download_file_parallel() {
 case "$(uname -s)" in
     Darwin) os="macos" ;;
     Linux) os="linux" ;;
-    *) echo "Unsupported OS: $(uname -s). oh-my-grok v1 supports Linux and macOS." >&2; exit 1 ;;
+    *) echo "Unsupported OS: $(uname -s). OMG v1 supports Linux and macOS." >&2; exit 1 ;;
 esac
 
 case "$(uname -m)" in
@@ -103,7 +103,7 @@ case "$(uname -m)" in
 esac
 
 if [[ -z "$TARGET" ]]; then
-    echo "Fetching latest oh-my-grok version..." >&2
+    echo "Fetching latest OMG version..." >&2
     version=$(download_file "${RELEASES_URL}/latest/download/version" | tr -d '\r' | head -n1 | tr -d '[:space:]')
 else
     version="$TARGET"
@@ -124,7 +124,7 @@ sums_tmp="$DOWNLOAD_DIR/SHA256SUMS.tmp.$$"
 mkdir -p "$DOWNLOAD_DIR" "$BIN_DIR"
 trap 'rm -f "$binary_tmp" "$sums_tmp" "${BIN_DIR}/.omg-link.$$" "${BIN_DIR}/.oh-my-grok-link.$$"' EXIT
 
-echo "Installing oh-my-grok $version ($platform)..." >&2
+echo "Installing OMG $version ($platform)..." >&2
 echo "  Downloading $artifact..." >&2
 download_file_parallel "${release_url}/${artifact}" "$binary_tmp"
 download_file "${release_url}/SHA256SUMS" "$sums_tmp"
@@ -151,7 +151,7 @@ fi
 
 chmod +x "$binary_tmp"
 if ! "$binary_tmp" --version </dev/null >/dev/null 2>&1; then
-    echo "Error: downloaded oh-my-grok failed to run; the existing install is unchanged." >&2
+    echo "Error: downloaded OMG failed to run; the existing install is unchanged." >&2
     exit 1
 fi
 mv -f "$binary_tmp" "$binary_path"
@@ -266,7 +266,7 @@ fi
 rm -f "$sums_tmp"
 trap - EXIT
 
-echo "oh-my-grok $version installed." >&2
+echo "OMG $version installed." >&2
 if path_has_dir "$BIN_DIR" || [[ -n "$SYMLINK_CREATED" ]]; then
     echo "Run 'omg' or 'oh-my-grok' to get started." >&2
 elif [[ -n "$config_file" ]]; then

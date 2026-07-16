@@ -134,7 +134,7 @@ fn write_item(
     match item {
         TitleItem::Grok => {
             push_separator(buf, has_parts);
-            buf.push_str("grok");
+            buf.push_str("OMG");
         }
         TitleItem::Spinner => {
             if !state.is_busy && state.activity.is_none() {

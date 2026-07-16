@@ -1,4 +1,4 @@
-//! Grok tools library.
+//! OMG tools library.
 
 pub use xai_grok_version::VERSION;
 
