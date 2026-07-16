@@ -53,6 +53,7 @@ jobs:
           mkdir -p dist
           asset="omg-${GROK_VERSION}-linux-x86_64"
           cp target/release-dist/omg "dist/$asset"
+          strip "dist/$asset"
           chmod +x "dist/$asset"
           output=$("dist/$asset" --version)
           echo "$output"
@@ -63,6 +64,7 @@ jobs:
           name: omg-linux-x86_64
           path: dist/omg-*
           if-no-files-found: error
+          retention-days: 1
 
   publish:
     needs: [validate, build]
