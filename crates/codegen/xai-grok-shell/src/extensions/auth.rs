@@ -127,6 +127,8 @@ async fn handle_logout(agent: &MvpAgent, args: &acp::ExtRequest) -> ExtResult {
 
     let result = crate::auth::perform_logout(&agent.auth_manager, params.scope.as_deref())
         .map_err(|e| acp::Error::internal_error().data(format!("failed to logout: {e}")))?;
+    let chatgpt_was_logged_in = crate::auth::chatgpt::logout()
+        .map_err(|e| acp::Error::internal_error().data(format!("failed to logout ChatGPT: {e}")))?;
     // `auth.lifecycle` (not `auth`) avoids colliding with the pre-existing
     // per-request `AuthManager::auth()` `#[instrument]` span.
     tracing::info_span!("auth.lifecycle", action = "logout", success = true).in_scope(|| {});
@@ -138,6 +140,7 @@ async fn handle_logout(agent: &MvpAgent, args: &acp::ExtRequest) -> ExtResult {
         "was_logged_in": result.was_logged_in,
         "email": result.email,
         "api_key_still_set": result.api_key_still_set,
+        "chatgpt_was_logged_in": chatgpt_was_logged_in,
     }))
 }
 

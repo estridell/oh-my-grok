@@ -19,6 +19,9 @@ param(
     [string]$Version
 )
 
+Write-Error "The oh-my-grok enterprise installer is disabled in v1."
+exit 1
+
 $ErrorActionPreference = 'Stop'
 
 # PS 5.1 defaults to TLS 1.0; GCS requires TLS 1.2.

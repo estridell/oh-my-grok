@@ -1072,14 +1072,19 @@ impl SamplingClient {
             request.inner.model = Some(self.defaults.model.clone());
         }
 
-        // Apply temperature default if not specified
-        if request.inner.temperature.is_none() {
-            request.inner.temperature = self.defaults.temperature;
-        }
-
-        // Apply top_p default if not specified
-        if request.inner.top_p.is_none() {
-            request.inner.top_p = self.defaults.top_p;
+        // ChatGPT's Codex endpoint rejects sampling controls on reasoning
+        // models. The public Responses endpoint still receives configured
+        // defaults for backward compatibility.
+        if !matches!(self.defaults.api_backend, ApiBackend::CodexResponses) {
+            if request.inner.temperature.is_none() {
+                request.inner.temperature = self.defaults.temperature;
+            }
+            if request.inner.top_p.is_none() {
+                request.inner.top_p = self.defaults.top_p;
+            }
+        } else {
+            request.inner.temperature = None;
+            request.inner.top_p = None;
         }
 
         // Apply max_output_tokens default if not specified
@@ -1142,9 +1147,13 @@ impl SamplingClient {
         // it in post-serialize. This is the last surviving piece of the
         // old raw_output machinery.
         xai_grok_sampling_types::patch_reasoning_text_types(&mut request_body);
-        let http_request = grok_headers
-            .apply(self.post(self.endpoint("responses")))
-            .json(&request_body);
+        let http_request = self.post(self.endpoint("responses"));
+        let http_request = if matches!(self.defaults.api_backend, ApiBackend::CodexResponses) {
+            http_request
+        } else {
+            grok_headers.apply(http_request)
+        };
+        let http_request = http_request.json(&request_body);
 
         let response = http_request.send().await.map_err(|e| {
             tracing::debug!("HTTP request failed: {}", e);
@@ -1293,10 +1302,14 @@ impl SamplingClient {
             .defaults
             .doom_loop_recovery
             .map(crate::doom_loop::DoomLoopSignalCollector::new);
-        let mut http_request = grok_headers
-            .apply(self.post(self.endpoint("responses")))
-            .header(ACCEPT, HeaderValue::from_static("text/event-stream"));
-        if doom_loop.is_some() {
+        let http_request = self.post(self.endpoint("responses"));
+        let mut http_request = if matches!(self.defaults.api_backend, ApiBackend::CodexResponses) {
+            http_request
+        } else {
+            grok_headers.apply(http_request)
+        }
+        .header(ACCEPT, HeaderValue::from_static("text/event-stream"));
+        if doom_loop.is_some() && !matches!(self.defaults.api_backend, ApiBackend::CodexResponses) {
             // Presence opts in; the server ignores the value.
             http_request = http_request.header(DOOM_LOOP_CHECK_HEADER, "true");
         }
@@ -1980,7 +1993,7 @@ impl SamplingClient {
                     crate::stream::stream_chat_completions(raw, meta, request_id, idle_timeout);
                 crate::stream::collect_response(events).await
             }
-            ApiBackend::Responses => {
+            ApiBackend::Responses | ApiBackend::CodexResponses => {
                 let (raw, meta, doom_loop) = self.conversation_stream_responses(request).await?;
                 let events =
                     crate::stream::stream_responses(raw, meta, request_id, idle_timeout, doom_loop);
@@ -2434,6 +2447,29 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some("Bearer fresh-bearer"),
         );
+    }
+
+    #[test]
+    fn codex_responses_strip_unsupported_sampling_controls() {
+        let cfg = SamplerConfig {
+            api_backend: ApiBackend::CodexResponses,
+            temperature: Some(0.7),
+            top_p: Some(0.8),
+            ..minimal_config()
+        };
+        let client = SamplingClient::new(cfg).expect("client should build");
+        let request = ConversationRequest {
+            temperature: Some(0.4),
+            top_p: Some(0.5),
+            ..Default::default()
+        };
+        let mut wrapper = CreateResponseWrapper::new((&request).into());
+        client
+            .apply_response_defaults(&mut wrapper)
+            .expect("defaults should apply");
+        assert_eq!(wrapper.inner.temperature, None);
+        assert_eq!(wrapper.inner.top_p, None);
+        assert_eq!(wrapper.inner.model.as_deref(), Some("test-model"));
     }
 
     #[test]

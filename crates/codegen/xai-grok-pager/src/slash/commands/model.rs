@@ -156,11 +156,22 @@ fn build_model_items(models: &ModelState) -> Vec<ArgItem> {
     for (id, info) in &models.available {
         let is_current = current_id == Some(id);
         let supports = supports_reasoning_effort(info);
+        let provider = info
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.get("provider"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("xai");
+        let badge = if provider == "openai-codex" {
+            "ChatGPT"
+        } else {
+            "xAI"
+        };
 
         let display = if is_current {
-            format!("{} (current)", info.name)
+            format!("[{badge}] {} (current)", info.name)
         } else {
-            info.name.clone()
+            format!("[{badge}] {}", info.name)
         };
 
         // Trailing space on reasoning models: signals "more input

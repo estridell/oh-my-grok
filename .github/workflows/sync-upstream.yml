@@ -1,0 +1,36 @@
+name: Sync upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Merge xAI upstream
+        run: |
+          git remote add upstream https://github.com/xai-org/grok-build.git
+          git fetch upstream main
+          git checkout -B sync/upstream-${GITHUB_RUN_ID} origin/main
+          git merge --no-edit upstream/main
+      - name: Push sync branch
+        run: git push --force-with-lease origin HEAD
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --base main \
+            --head sync/upstream-${GITHUB_RUN_ID} \
+            --title "Sync xai-org/grok-build upstream" \
+            --body "Automated merge of the latest upstream main branch." \
+            || true

@@ -291,6 +291,7 @@ pub enum AuthMethodKind {
     CachedToken,
     GrokCom,
     Oidc,
+    OpenAiCodex,
     Unknown,
 }
 
@@ -301,6 +302,7 @@ impl AuthMethodKind {
             CACHED_TOKEN_AUTH_METHOD_ID => Self::CachedToken,
             GROK_COM_METHOD_ID => Self::GrokCom,
             OIDC_METHOD_ID => Self::Oidc,
+            crate::auth::chatgpt::AUTH_METHOD_ID => Self::OpenAiCodex,
             _ => Self::Unknown,
         }
     }
@@ -387,10 +389,9 @@ pub fn session_token_auth_gate(
         }
 }
 
-pub const AUTH_ERROR_SESSION_EXPIRED: &str =
-    "Session expired. Run `grok login` to re-authenticate.";
+pub const AUTH_ERROR_SESSION_EXPIRED: &str = "Session expired. Run `omg login` to re-authenticate.";
 
-pub const AUTH_ERROR_API_KEY: &str = "Authentication failed. Run `grok login`, set XAI_API_KEY, or add api_key to ~/.grok/config.toml.";
+pub const AUTH_ERROR_API_KEY: &str = "Authentication failed. Run `omg login`, set XAI_API_KEY, or add api_key to ~/.oh-my-grok/config.toml.";
 
 /// Next ACP method id when `cached_token` cannot proceed (missing / expired /
 /// legacy WebLogin), or `None` when fallthrough is forbidden.
@@ -420,7 +421,7 @@ pub const PREFERRED_API_KEY_UNAVAILABLE: &str = "preferred_method=api_key but no
 
 /// Error when `preferred_method=oidc` but the session path cannot proceed.
 pub const PREFERRED_OIDC_UNAVAILABLE: &str =
-    "preferred_method=oidc but no session is available. Run `grok login` to authenticate.";
+    "preferred_method=oidc but no session is available. Run `omg login` to authenticate.";
 
 pub const XAI_API_KEY_METHOD_ID: &str = "xai.api_key";
 pub fn xai_api_key_auth_method() -> acp::AuthMethod {
@@ -442,7 +443,9 @@ pub fn cached_token_auth_method() -> acp::AuthMethod {
             acp::AuthMethodId::new(CACHED_TOKEN_AUTH_METHOD_ID),
             "cached_token".to_string(),
         )
-        .description(Some("Cached token from ~/.grok/auth.json".to_string())),
+        .description(Some(
+            "Cached token from ~/.oh-my-grok/auth.json".to_string(),
+        )),
     )
 }
 
@@ -476,6 +479,23 @@ pub fn oidc_auth_method(issuer: &str, label: Option<&str>) -> acp::AuthMethod {
     acp::AuthMethod::Agent(
         acp::AuthMethodAgent::new(acp::AuthMethodId::new(OIDC_METHOD_ID), name.clone())
             .description(Some(format!("Sign in with {name}"))),
+    )
+}
+
+pub fn openai_codex_auth_method() -> acp::AuthMethod {
+    let mut meta = acp::Meta::new();
+    meta.insert("provider".to_owned(), serde_json::json!("openai-codex"));
+    meta.insert(
+        "configured".to_owned(),
+        serde_json::json!(crate::auth::chatgpt::is_configured()),
+    );
+    acp::AuthMethod::Agent(
+        acp::AuthMethodAgent::new(
+            acp::AuthMethodId::new(crate::auth::chatgpt::AUTH_METHOD_ID),
+            "ChatGPT".to_string(),
+        )
+        .description(Some("Sign in with ChatGPT for Codex models".to_string()))
+        .meta(Some(meta)),
     )
 }
 

@@ -4804,6 +4804,17 @@ pub fn to_acp_model_info(
                     "agentType".to_string(),
                     serde_json::Value::String(info.agent_type.clone()),
                 );
+                map.insert(
+                    "provider".to_string(),
+                    serde_json::Value::String(
+                        if matches!(info.api_backend, ApiBackend::CodexResponses) {
+                            "openai-codex"
+                        } else {
+                            "xai"
+                        }
+                        .to_string(),
+                    ),
+                );
                 if info.supports_reasoning_effort {
                     map.insert(
                         "supportsReasoningEffort".to_string(),

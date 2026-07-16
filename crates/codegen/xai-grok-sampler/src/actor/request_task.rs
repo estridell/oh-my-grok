@@ -435,7 +435,7 @@ async fn run_one_attempt(
             let l2 = stream_chat_completions(teed, metadata, request_id.clone(), idle_timeout);
             drive_l2(l2, request_id, event_tx, cancel_token, captured, None).await
         }
-        ApiBackend::Responses => {
+        ApiBackend::Responses | ApiBackend::CodexResponses => {
             let (raw, metadata, doom_loop) =
                 match client.conversation_stream_responses(request).await {
                     Ok(parts) => parts,

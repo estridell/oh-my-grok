@@ -8,7 +8,7 @@ use std::os::unix::process::CommandExt;
 
 use futures::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::version::{
     UpdateConfig, fetch_latest_version, get_installed_grok_version, get_latest_version,
@@ -25,21 +25,16 @@ pub enum UpdateRunMode {
 
 const PROMPT_UPDATE_NOW: &str = "Update now? [Y/n/d]";
 const MSG_AUTO_UPDATE_BACKGROUND: &str = "Auto-update running in background.";
-const MSG_RUN_UPDATE_MANUAL: &str = "Run `grok update` to get the latest version.";
+const MSG_RUN_UPDATE_MANUAL: &str = "Run `omg update` to get the latest version.";
 /// Manual-install one-liner for this platform's bootstrap installer.
 fn manual_install_cmd() -> &'static str {
-    if cfg!(windows) {
-        "irm https://x.ai/cli/install.ps1 | iex"
-    } else {
-        "curl -fsSL https://x.ai/cli/install.sh | bash"
-    }
+    "curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash"
 }
 
 /// Build a reinstall hint for a known installer type.
 fn reinstall_hint(installer: &str) -> String {
     match installer {
-        "npm" => "Please reinstall via npm:\n  npm i -g @xai-official/grok".to_string(),
-        "gh-release" => "Please reinstall via GitHub Releases:\n  gh release download --repo xai-org-shared/grok-build --pattern 'grok-*' --output grok && chmod +x grok".to_string(),
+        "gh-release" => format!("Please reinstall via:\n  {}", manual_install_cmd()),
         _ => format!("Please reinstall via:\n  {}", manual_install_cmd()),
     }
 }
@@ -273,20 +268,13 @@ fn disk_version_for_installer(installer: &str) -> Option<String> {
 fn env_installer() -> Option<&'static str> {
     if let Ok(v) = std::env::var("GROK_INSTALLER") {
         return match v.to_ascii_lowercase().as_str() {
-            "npm" => Some("npm"),
             "internal" => Some("internal"),
             "gh-release" | "gh" => Some("gh-release"),
             _ => None,
         };
     }
-    if std::env::var_os("GROK_MANAGED_BY_NPM").is_some() {
-        return Some("npm");
-    }
     if std::env::var_os("GROK_MANAGED_BY_INTERNAL").is_some() {
         return Some("internal");
-    }
-    if std::env::var_os("npm_config_user_agent").is_some() {
-        return Some("npm");
     }
     None
 }
@@ -297,9 +285,12 @@ pub async fn get_installer() -> Option<&'static str> {
     }
     let cfg = config::load_config().await;
     match cfg.cli.installer.as_deref() {
-        Some("npm") => Some("npm"),
+        // npm distribution is intentionally inactive in oh-my-grok v1.
+        // Treat inherited npm state as a migration to GitHub Releases.
+        Some("npm") => Some("gh-release"),
         Some("gh-release") => Some("gh-release"),
-        _ => Some("internal"),
+        Some("internal") => Some("internal"),
+        _ => Some("gh-release"),
     }
 }
 
@@ -689,11 +680,7 @@ pub async fn run_install_script(
     update_config: &UpdateConfig,
 ) -> Result<()> {
     let result = match installer {
-        "npm" => install_npm(
-            target,
-            &update_config.channel,
-            update_config.npm_registry.as_deref(),
-        ),
+        "npm" => anyhow::bail!("npm installation is disabled for oh-my-grok v1"),
         "gh-release" => install_gh_release(target).await,
         _ => install_internal(target, update_config).await,
     };
@@ -1191,10 +1178,10 @@ async fn download_verified_from_base(
     let download_dir = grok_home.join("downloads");
     tokio::fs::create_dir_all(&download_dir).await?;
 
-    let binary_name = format!("grok-{}-{}", version, platform);
+    let binary_name = format!("omg-{}-{}", version, platform);
     let binary_path = download_dir.join(&binary_name);
 
-    eprintln!("  Downloading grok v{} ({})...", version, platform);
+    eprintln!("  Downloading oh-my-grok v{} ({})...", version, platform);
 
     // Published already +x (see `publish_downloaded_artifact`).
     download_cli_artifact_from_gcs(gcs_base_url, &binary_name, &binary_path, true).await?;
@@ -1227,7 +1214,7 @@ async fn activate_verified_download(download: &VerifiedDownload) -> Result<()> {
     let bin_dir = grok_home.join("bin");
     tokio::fs::create_dir_all(&bin_dir).await?;
 
-    // Atomic swap of ~/.grok/bin/{grok,agent} -> downloaded binary.
+    // Atomic swap of ~/.oh-my-grok/bin/{omg,oh-my-grok} -> downloaded binary.
     let link_path = swap_managed_bin_links(&download.binary_path, &bin_dir).await?;
 
     remove_stale_pager(&bin_dir).await;
@@ -1235,8 +1222,7 @@ async fn activate_verified_download(download: &VerifiedDownload) -> Result<()> {
     eprintln!();
 
     // Clean up old versioned binaries (keeps current + 1 previous).
-    cleanup_old_downloads(&download_dir, "grok", &download.version).await;
-    cleanup_old_downloads(&download_dir, "grok-pager", &download.version).await;
+    cleanup_old_downloads(&download_dir, "omg", &download.version).await;
 
     // Persist installer to config.toml so future runs auto-detect internal.
     let _ = config::update_config(|st| {
@@ -1320,16 +1306,14 @@ fn relative_symlink_target(target: &std::path::Path, link: &std::path::Path) -> 
     target.to_path_buf()
 }
 
-/// Swap `~/.grok/bin/{grok,agent}` to point at `binary_path`. Returns the
-/// `grok` link path (for [`regenerate_completions`]).
+/// Swap `~/.oh-my-grok/bin/{omg,oh-my-grok}` to point at `binary_path`.
+/// Returns the `omg` link path (for [`regenerate_completions`]).
 ///
-/// `grok` and `agent` are first-class entry points that the bootstrap
-/// installers (`install.sh`, `install.ps1`, `install-enterprise.sh`)
-/// maintain in lockstep, and so must the updater — otherwise `grok update`
-/// leaves `agent` pinned at the previous version.
+/// Both fork entry points are maintained in lockstep, without touching a
+/// separately installed stock Grok binary.
 ///
 /// Unix: atomic symlink swap with relative target (survives Docker
-/// bind-mounts of `~/.grok/`). Windows: [`windows_replace_exe`].
+/// bind-mounts of `~/.oh-my-grok/`). Windows: [`windows_replace_exe`].
 ///
 /// **All-or-nothing.** Each link's prior state is captured (Unix: prior
 /// symlink target; Windows: `.rollback.bak`; or `Absent` marker via
@@ -1342,11 +1326,15 @@ async fn swap_managed_bin_links(
     binary_path: &std::path::Path,
     bin_dir: &std::path::Path,
 ) -> Result<std::path::PathBuf> {
-    let grok_name = if cfg!(windows) { "grok.exe" } else { "grok" };
-    let agent_name = if cfg!(windows) { "agent.exe" } else { "agent" };
-    let grok_link = bin_dir.join(grok_name);
-    let agent_link = bin_dir.join(agent_name);
-    let link_paths: [std::path::PathBuf; 2] = [grok_link.clone(), agent_link];
+    let omg_name = if cfg!(windows) { "omg.exe" } else { "omg" };
+    let alias_name = if cfg!(windows) {
+        "oh-my-grok.exe"
+    } else {
+        "oh-my-grok"
+    };
+    let omg_link = bin_dir.join(omg_name);
+    let alias_link = bin_dir.join(alias_name);
+    let link_paths: [std::path::PathBuf; 2] = [omg_link.clone(), alias_link];
 
     // Capture every link up-front so a 2nd-link capture failure can't
     // strand the 1st mid-swap.
@@ -1415,7 +1403,7 @@ async fn swap_managed_bin_links(
     for cap in &captured {
         cap.cleanup().await;
     }
-    Ok(grok_link)
+    Ok(omg_link)
 }
 
 /// Snapshot of a managed-bin link's prior state for rollback in
@@ -1856,63 +1844,81 @@ async fn cleanup_old_downloads(dir: &std::path::Path, bin_prefix: &str, current_
     }
 }
 
-/// Download a single asset from a GitHub release via `gh release download`.
-async fn gh_release_download(tag: &str, pattern: &str, dest: &std::path::Path) -> Result<()> {
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("  {spinner:.cyan} Downloading from GitHub Releases...")
-            .unwrap(),
-    );
-    pb.enable_steady_tick(Duration::from_millis(100));
+fn release_asset_url(base_url: &str, version: &str, asset: &str) -> String {
+    format!(
+        "{}/download/v{}/{}",
+        base_url.trim_end_matches('/'),
+        version,
+        asset
+    )
+}
 
-    let mut cmd = tokio::process::Command::new("gh");
-    cmd.args([
-        "release",
-        "download",
-        tag,
-        "--repo",
-        crate::version::GH_RELEASE_REPO,
-        "--pattern",
-        pattern,
-        "--output",
-        &dest.to_string_lossy(),
-        "--clobber",
-    ])
-    .stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::piped());
-    xai_grok_tools::util::detach_command(&mut cmd);
-    cmd.envs(xai_grok_tools::util::pager_env());
-    let output = cmd.output().await?;
+async fn fetch_release_text(base_url: &str, version: &str, asset: &str) -> Result<String> {
+    let url = release_asset_url(base_url, version, asset);
+    Ok(reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?
+        .get(&url)
+        .header(reqwest::header::USER_AGENT, "oh-my-grok-updater")
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?)
+}
 
-    pb.finish_and_clear();
+async fn verify_release_checksum(
+    base_url: &str,
+    version: &str,
+    asset: &str,
+    path: &std::path::Path,
+) -> Result<()> {
+    use sha2::{Digest as _, Sha256};
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!(
-            "gh release download failed for {} tag {} from {}: {}",
-            pattern,
-            tag,
-            crate::version::GH_RELEASE_REPO,
-            stderr.trim()
-        );
+    let sums = fetch_release_text(base_url, version, "SHA256SUMS").await?;
+    let expected = sums
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let digest = fields.next()?;
+            let name = fields.next()?.trim_start_matches('*');
+            (name == asset).then_some(digest)
+        })
+        .next()
+        .with_context(|| format!("SHA256SUMS does not contain {asset}"))?;
+
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    loop {
+        let read = file.read(&mut buffer).await?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    let actual = format!("{:x}", hasher.finalize());
+    if !actual.eq_ignore_ascii_case(expected) {
+        anyhow::bail!("checksum mismatch for {asset}: expected {expected}, got {actual}");
     }
     Ok(())
 }
 
-/// Download and install grok from GitHub Releases (xai-org-shared/grok-build).
+/// Download and install oh-my-grok from this fork's GitHub Releases.
 ///
-/// Uses `gh release download` to fetch the binary matching the current platform.
-/// This works anywhere the `gh` CLI is authenticated, without needing npm or
-/// internal network access.
+/// Uses anonymous HTTPS to fetch the binary matching the current platform.
 async fn install_gh_release(target: Option<&str>) -> Result<()> {
+    install_gh_release_from_base(target, crate::version::GH_RELEASE_BASE_URL).await
+}
+
+#[doc(hidden)]
+pub async fn install_gh_release_from_base(target: Option<&str>, base_url: &str) -> Result<()> {
     let (os, arch) = detect_platform()?;
     let platform = format!("{}-{}", os, arch);
 
     let version = match target {
         Some(v) => v.to_string(),
-        None => crate::version::fetch_gh_release_version("stable").await?,
+        None => crate::version::fetch_gh_release_version_from_base("stable", base_url).await?,
     };
 
     let grok_home = grok_home();
@@ -1921,16 +1927,21 @@ async fn install_gh_release(target: Option<&str>) -> Result<()> {
     tokio::fs::create_dir_all(&download_dir).await?;
     tokio::fs::create_dir_all(&bin_dir).await?;
 
-    let binary_name = format!("grok-{}-{}", version, platform);
+    let binary_name = format!("omg-{}-{}", version, platform);
     let binary_path = download_dir.join(&binary_name);
-    let tag = format!("v{}", version);
-
     eprintln!(
-        "  Downloading grok v{} ({}) from GitHub Releases...",
+        "  Downloading oh-my-grok v{} ({}) from GitHub Releases...",
         version, platform
     );
 
-    gh_release_download(&tag, &binary_name, &binary_path).await?;
+    let url = release_asset_url(base_url, &version, &binary_name);
+    download_with_progress(&url, &binary_path).await?;
+    if let Err(error) =
+        verify_release_checksum(base_url, &version, &binary_name, &binary_path).await
+    {
+        let _ = tokio::fs::remove_file(&binary_path).await;
+        return Err(error);
+    }
 
     // chmod +x
     #[cfg(unix)]
@@ -1939,30 +1950,36 @@ async fn install_gh_release(target: Option<&str>) -> Result<()> {
         tokio::fs::set_permissions(&binary_path, std::fs::Permissions::from_mode(0o755)).await?;
     }
 
-    // Atomic swap of ~/.grok/bin/{grok,agent} -> downloaded binary.
-    swap_managed_bin_links(&binary_path, &bin_dir).await?;
+    if !smoke_test_binary(&binary_path).await {
+        let _ = tokio::fs::remove_file(&binary_path).await;
+        anyhow::bail!("downloaded binary failed to run; your current version is unchanged");
+    }
 
-    // Update grok-latest -> versioned binary so any existing symlinks that route
-    // through it (e.g. /usr/local/bin/grok -> ~/.grok/downloads/grok-latest)
+    // Atomic swap of ~/.oh-my-grok/bin/{omg,oh-my-grok} -> downloaded binary.
+    let link_path = swap_managed_bin_links(&binary_path, &bin_dir).await?;
+
+    // Update omg-latest -> versioned binary so any existing symlinks that route
+    // through it (e.g. /usr/local/bin/omg -> ~/.oh-my-grok/downloads/omg-latest)
     // resolve to the newly installed version.
     #[cfg(unix)]
     {
-        let latest_path = download_dir.join("grok-latest");
+        let latest_path = download_dir.join("omg-latest");
         let rel_target = relative_symlink_target(&binary_path, &latest_path);
         if let Err(e) = atomic_symlink_swap(&rel_target, &latest_path).await {
-            tracing::warn!("Failed to update grok-latest symlink: {e}");
+            tracing::warn!("Failed to update omg-latest symlink: {e}");
         }
     }
 
-    // Also update /usr/local/bin/{grok,agent} if either points directly into
-    // ~/.grok/downloads/ (legacy layout — skips the grok-latest indirection).
+    // Also update /usr/local/bin/{omg,oh-my-grok} if either points directly
+    // into ~/.oh-my-grok/downloads/ (legacy layout that skips omg-latest).
     // Permission errors ignored.
     #[cfg(unix)]
-    for name in ["grok", "agent"] {
+    for name in ["omg", "oh-my-grok"] {
         let system_link = std::path::PathBuf::from(format!("/usr/local/bin/{name}"));
         if let Ok(existing_target) = tokio::fs::read_link(&system_link).await {
             let target_str = existing_target.to_string_lossy();
-            if target_str.contains(".grok/downloads/") && !target_str.ends_with("grok-latest") {
+            if target_str.contains(".oh-my-grok/downloads/") && !target_str.ends_with("omg-latest")
+            {
                 // Try to update; ignore permission errors
                 let _ = atomic_symlink_swap(&binary_path, &system_link).await;
             }
@@ -1974,14 +1991,15 @@ async fn install_gh_release(target: Option<&str>) -> Result<()> {
     eprintln!();
 
     // Clean up old versioned binaries (keeps current + 1 previous).
-    cleanup_old_downloads(&download_dir, "grok", &version).await;
-    cleanup_old_downloads(&download_dir, "grok-pager", &version).await;
+    cleanup_old_downloads(&download_dir, "omg", &version).await;
 
     // Persist installer to config.toml so future runs auto-detect gh-release.
     let _ = config::update_config(|st| {
         st.cli.installer = Some("gh-release".to_string());
     })
     .await;
+
+    regenerate_completions(&link_path, &grok_home).await;
 
     Ok(())
 }
@@ -2072,7 +2090,7 @@ fn install_npm(target: Option<&str>, channel: &str, npm_registry: Option<&str>) 
     warn_if_other_grok_processes_running();
 
     let version_arg = match target {
-        Some(ver) => format!("@xai-official/grok@{ver}"),
+        Some(ver) => format!("oh-my-grok@{ver}"),
         None => {
             // All current callers resolve the version via get_latest_version
             // (which applies max(stable, alpha) for the alpha channel) before
@@ -2083,7 +2101,7 @@ fn install_npm(target: Option<&str>, channel: &str, npm_registry: Option<&str>) 
                 "install_npm called without a resolved version, falling back to dist-tag"
             );
             format!(
-                "@xai-official/grok@{}",
+                "oh-my-grok@{}",
                 if channel == "alpha" {
                     "alpha"
                 } else {
@@ -2347,7 +2365,7 @@ async fn refresh_deployment_config() {
         Err(e) if e.is_auth_rejection() => tracing::debug!("managed config not applied: {e}"),
         Err(e) if e.is_retryable() => {
             tracing::debug!("managed config refresh failed: {e}");
-            eprintln!("  Couldn't apply managed configuration. Run `grok setup` to retry.");
+            eprintln!("  Couldn't apply managed configuration. Run `omg setup` to retry.");
         }
         Err(e) => eprintln!("  Couldn't apply managed configuration. {e}"),
     }
@@ -3210,24 +3228,19 @@ mod tests {
     // ──────────────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_reinstall_hint_npm_mentions_npm_command() {
+    fn test_reinstall_hint_npm_falls_back_to_release_installer() {
         let hint = reinstall_hint("npm");
-        assert!(hint.contains("npm i -g"), "should suggest npm i -g: {hint}");
-        assert!(
-            hint.contains("@xai-official/grok"),
-            "should name the package: {hint}"
-        );
+        assert!(hint.contains("curl -fsSL"));
+        assert!(hint.contains("estridell/oh-my-grok"));
+        assert!(!hint.contains("npm i -g"));
     }
 
     #[test]
-    fn test_reinstall_hint_gh_release_mentions_gh_command() {
+    fn test_reinstall_hint_gh_release_mentions_curl_installer() {
         let hint = reinstall_hint("gh-release");
+        assert!(hint.contains("curl -fsSL"));
         assert!(
-            hint.contains("gh release download"),
-            "should suggest gh release download: {hint}"
-        );
-        assert!(
-            hint.contains("xai-org-shared/grok-build"),
+            hint.contains("estridell/oh-my-grok"),
             "should name the repo: {hint}"
         );
     }
@@ -3235,19 +3248,8 @@ mod tests {
     #[test]
     fn test_reinstall_hint_internal_mentions_platform_installer() {
         let hint = reinstall_hint("internal");
-        if cfg!(windows) {
-            assert!(hint.contains("irm"), "should suggest irm install: {hint}");
-            assert!(
-                hint.contains("install.ps1"),
-                "should reference install.ps1: {hint}"
-            );
-        } else {
-            assert!(hint.contains("curl"), "should suggest curl install: {hint}");
-            assert!(
-                hint.contains("install.sh"),
-                "should reference install.sh: {hint}"
-            );
-        }
+        assert!(hint.contains("curl -fsSL"));
+        assert!(hint.contains("estridell/oh-my-grok"));
     }
 
     #[test]
@@ -3967,7 +3969,7 @@ mod tests {
         );
         assert_eq!(
             MSG_RUN_UPDATE_MANUAL,
-            "Run `grok update` to get the latest version."
+            "Run `omg update` to get the latest version."
         );
     }
 
@@ -3975,11 +3977,9 @@ mod tests {
     // env_installer — env-var based, must run serially.
     //
     // Resolution order (matches function body):
-    //   1. GROK_INSTALLER (npm | internal | gh-release | gh)
-    //   2. GROK_MANAGED_BY_NPM       → npm
-    //   3. GROK_MANAGED_BY_INTERNAL  → internal
-    //   4. npm_config_user_agent      → npm
-    //   5. None
+    //   1. GROK_INSTALLER (internal | gh-release | gh)
+    //   2. GROK_MANAGED_BY_INTERNAL → internal
+    //   3. None
     // ──────────────────────────────────────────────────────────────────────
 
     /// Snapshot every installer-related env var so the test can clear them
@@ -4031,10 +4031,10 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
-    fn test_env_installer_explicit_npm() {
+    fn test_env_installer_explicit_npm_is_disabled() {
         let _g = InstallerEnvGuard::isolate();
         unsafe { std::env::set_var("GROK_INSTALLER", "npm") };
-        assert_eq!(env_installer(), Some("npm"));
+        assert_eq!(env_installer(), None);
     }
 
     #[test]
@@ -4066,9 +4066,6 @@ mod tests {
     #[serial_test::serial]
     fn test_env_installer_explicit_uppercase_normalized() {
         let _g = InstallerEnvGuard::isolate();
-        unsafe { std::env::set_var("GROK_INSTALLER", "NPM") };
-        assert_eq!(env_installer(), Some("npm"));
-
         unsafe { std::env::set_var("GROK_INSTALLER", "Gh-Release") };
         assert_eq!(env_installer(), Some("gh-release"));
     }
@@ -4101,19 +4098,18 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
-    fn test_env_installer_managed_by_npm() {
+    fn test_env_installer_managed_by_npm_is_ignored() {
         let _g = InstallerEnvGuard::isolate();
         unsafe { std::env::set_var("GROK_MANAGED_BY_NPM", "1") };
-        assert_eq!(env_installer(), Some("npm"));
+        assert_eq!(env_installer(), None);
     }
 
     #[test]
     #[serial_test::serial]
-    fn test_env_installer_managed_by_npm_any_value() {
-        // The check is `is_some` — any value (including empty) wins.
+    fn test_env_installer_managed_by_npm_empty_is_ignored() {
         let _g = InstallerEnvGuard::isolate();
         unsafe { std::env::set_var("GROK_MANAGED_BY_NPM", "") };
-        assert_eq!(env_installer(), Some("npm"));
+        assert_eq!(env_installer(), None);
     }
 
     #[test]
@@ -4126,9 +4122,7 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
-    fn test_env_installer_npm_config_user_agent_implies_npm() {
-        // npm sets npm_config_user_agent in the env of any process it spawns.
-        // The trampoline relies on this fallback when MANAGED_BY_NPM was lost.
+    fn test_env_installer_npm_config_user_agent_is_ignored() {
         let _g = InstallerEnvGuard::isolate();
         unsafe {
             std::env::set_var(
@@ -4136,21 +4130,18 @@ mod tests {
                 "npm/10.2.0 node/v20.11.0 darwin arm64 workspaces/false",
             )
         };
-        assert_eq!(env_installer(), Some("npm"));
+        assert_eq!(env_installer(), None);
     }
 
     #[test]
     #[serial_test::serial]
-    fn test_env_installer_managed_by_npm_wins_over_npm_config_user_agent() {
-        // Both set: the order in env_installer is MANAGED_BY_NPM checked first,
-        // so MANAGED_BY_NPM wins. (Result is the same — both → npm — but the
-        // resolution path matters for future maintainers.)
+    fn test_env_installer_npm_markers_together_are_ignored() {
         let _g = InstallerEnvGuard::isolate();
         unsafe {
             std::env::set_var("GROK_MANAGED_BY_NPM", "1");
             std::env::set_var("npm_config_user_agent", "npm/10");
         }
-        assert_eq!(env_installer(), Some("npm"));
+        assert_eq!(env_installer(), None);
     }
 
     #[test]

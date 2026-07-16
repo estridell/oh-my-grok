@@ -1,5 +1,10 @@
 <div align="center">
 
+> **oh-my-grok** is an independent fork of Grok Build. It keeps the stock X
+> account flow and adds ChatGPT OAuth, Codex Responses support, and the
+> GPT-5.6 Sol, Terra, and Luna model family. The primary binary is `omg`, with
+> `oh-my-grok` as a long-name alias.
+
 <h1>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://media.x.ai/v1/website/spacexai-symbol-white-transparent-0c31957f.png">
@@ -7,7 +12,7 @@
     <img alt="SpaceXAI logo" src="https://media.x.ai/v1/website/spacexai-symbol-black-transparent-6435cf42.png" width="96">
   </picture>
   <br>
-  Grok Build (<code>grok</code>)
+  oh-my-grok (<code>omg</code>)
 </h1>
 
 **Grok Build** is SpaceXAI's terminal-based AI coding agent. It runs as a
@@ -37,16 +42,22 @@ runtime. It is synced periodically from the SpaceXAI monorepo.
 
 ## Installing the released binary
 
-Prebuilt binaries are published for macOS, Linux, and Windows:
+Install the latest stable release on Linux or macOS:
 
 ```sh
-curl -fsSL https://x.ai/cli/install.sh | bash   # macOS / Linux / Git Bash
-irm https://x.ai/cli/install.ps1 | iex          # Windows PowerShell
-grok --version
+curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash
 ```
 
-See the [changelog](https://x.ai/build/changelog) for the latest fixes,
-features, and improvements in each release.
+To install a specific version, pass it as the first script argument:
+
+```sh
+curl -fsSL https://github.com/estridell/oh-my-grok/releases/latest/download/install.sh | bash -s 0.1.0
+```
+
+The installer verifies the release checksum, smoke-tests the binary, and
+installs `omg` and `oh-my-grok` under `~/.oh-my-grok/bin`. New stable GitHub
+Releases are detected by the CLI within its normal 30-minute update-check
+window. Windows and npm distribution are not active in v1.
 
 ## Building from source
 
@@ -61,13 +72,14 @@ Requirements:
   and not currently tested from this tree.
 
 ```sh
-cargo run -p xai-grok-pager-bin              # build + launch the TUI
-cargo build -p xai-grok-pager-bin --release  # release binary: target/release/xai-grok-pager
+cargo run -p xai-grok-pager-bin --bin omg    # build + launch the TUI
+cargo build -p xai-grok-pager-bin --profile release-dist --features release-dist
 cargo check -p xai-grok-pager-bin            # fast validation
 ```
 
-The binary artifact is named `xai-grok-pager`; official installs ship it as
-`grok`. On first launch it opens your browser to authenticate — see the
+The primary binary is `omg`, and the long-name alias is `oh-my-grok`. State is
+stored in `~/.oh-my-grok`; `OH_MY_GROK_HOME` overrides that path and the legacy
+`GROK_HOME` variable remains supported. On first launch it opens your browser to authenticate — see the
 [authentication guide](crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md).
 
 ## Documentation
@@ -84,7 +96,7 @@ MCP servers, skills, plugins, hooks, headless mode, sandboxing, and more.
 
 | Path | Contents |
 |------|----------|
-| `crates/codegen/xai-grok-pager-bin` | Composition-root package; builds the `xai-grok-pager` binary |
+| `crates/codegen/xai-grok-pager-bin` | Composition-root package; builds the `omg` and `oh-my-grok` binaries |
 | `crates/codegen/xai-grok-pager` | The TUI: scrollback, prompt, modals, rendering |
 | `crates/codegen/xai-grok-shell` | Agent runtime + leader/stdio/headless entry points |
 | `crates/codegen/xai-grok-tools` | Tool implementations (terminal, file edit, search, ...) |
@@ -106,6 +118,10 @@ cargo test -p xai-grok-config # per-crate tests
 cargo clippy -p <crate>       # lint config: clippy.toml at the repo root
 cargo fmt --all               # rustfmt.toml at the repo root
 ```
+
+Maintainers publish releases by pushing a stable `vX.Y.Z` tag. See
+[`RELEASING.md`](RELEASING.md) for the build matrix, artifacts, and update
+propagation behavior.
 
 ## Contributing
 

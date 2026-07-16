@@ -14,6 +14,7 @@ use crate::auth::{AuthManager, GrokAuth, GrokComConfig};
 use crate::remote::{FetchModelsResult, fetch_models_blocking};
 use crate::sampling::SamplerConfig as SamplingConfig;
 use globset::{Glob, GlobSet, GlobSetBuilder};
+use xai_grok_sampling_types::ApiBackend;
 use xai_grok_sampling_types::{ReasoningEffort, ReasoningEffortOption};
 
 // ── Auth method for model fetching ──────────────────────────────────────────
@@ -950,7 +951,7 @@ impl ModelsManager {
         let credentials =
             resolve_credentials(current_model, session_auth.as_ref().map(|a| a.key.as_str()));
 
-        sampling_config_for_model(
+        let mut sampling = sampling_config_for_model(
             current_model,
             credentials,
             config.endpoints.alpha_test_key.clone(),
@@ -959,7 +960,22 @@ impl ModelsManager {
                 config.endpoints.deployment_key.as_deref(),
             ),
             None,
-        )
+        );
+        if matches!(current_model.info.api_backend, ApiBackend::CodexResponses) {
+            sampling.base_url = crate::auth::chatgpt::CODEX_BASE_URL.to_string();
+            if let Ok(credentials) = crate::auth::chatgpt::load() {
+                sampling.api_key = Some(credentials.access_token);
+                if let Some(account_id) = credentials.account_id {
+                    sampling
+                        .extra_headers
+                        .insert("chatgpt-account-id".to_string(), account_id);
+                }
+            }
+            sampling
+                .extra_headers
+                .insert("originator".to_string(), "oh-my-grok".to_string());
+        }
+        sampling
     }
 
     /// Disk-cache origin key for this manager's current endpoints/auth shape
@@ -1834,6 +1850,10 @@ pub fn resolve_model_catalog(
     prefetched: Option<IndexMap<String, ModelEntry>>,
 ) -> IndexMap<String, ModelEntry> {
     let mut catalog: IndexMap<String, ModelEntry> = config::resolve_model_list(cfg, prefetched);
+    for (id, entry) in openai_codex_models() {
+        // A user-defined model with the same id remains authoritative.
+        catalog.entry(id).or_insert(entry);
+    }
 
     if let Ok(Some(disabled)) = ModelGlobSet::compile(cfg.models.disabled_models.as_ref()) {
         let before = catalog.len();
@@ -1894,6 +1914,64 @@ pub fn resolve_model_catalog(
     }
 
     catalog
+}
+
+fn openai_codex_models() -> IndexMap<String, ModelEntry> {
+    [
+        ("gpt-5.6-sol", "GPT-5.6 Sol", ReasoningEffort::Low),
+        ("gpt-5.6-terra", "GPT-5.6 Terra", ReasoningEffort::Medium),
+        ("gpt-5.6-luna", "GPT-5.6 Luna", ReasoningEffort::Medium),
+    ]
+    .into_iter()
+    .map(|(id, name, default_effort)| {
+        let mut info = config::ModelInfo::fallback(id);
+        info.id = Some(id.to_string());
+        info.model = id.to_string();
+        info.name = Some(name.to_string());
+        info.description = Some("ChatGPT OAuth via the Codex Responses API".to_string());
+        info.base_url = crate::auth::chatgpt::CODEX_BASE_URL.to_string();
+        info.api_backend = ApiBackend::CodexResponses;
+        info.context_window = std::num::NonZeroU64::new(272_000).unwrap();
+        info.agent_type = "grok-build".to_string();
+        info.supported_in_api = true;
+        info.supports_reasoning_effort = true;
+        info.reasoning_effort = Some(default_effort);
+        info.reasoning_efforts = [
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High,
+            ReasoningEffort::Xhigh,
+        ]
+        .into_iter()
+        .map(|effort| ReasoningEffortOption {
+            id: effort.as_str().to_string(),
+            value: effort,
+            label: match effort {
+                ReasoningEffort::Xhigh => "Extra high".to_string(),
+                _ => {
+                    let raw = effort.as_str();
+                    let mut chars = raw.chars();
+                    chars
+                        .next()
+                        .map(|first| first.to_uppercase().chain(chars).collect())
+                        .unwrap_or_default()
+                }
+            },
+            description: None,
+            default: effort == default_effort,
+        })
+        .collect();
+        (
+            id.to_string(),
+            ModelEntry {
+                info,
+                api_key: None,
+                env_key: None,
+                api_base_url: None,
+            },
+        )
+    })
+    .collect()
 }
 
 /// Whether `effort` is a value this model will accept on the wire.

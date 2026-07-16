@@ -17,6 +17,9 @@
 # Windows: run under Git for Windows / MSYS2 Bash (same curl | bash flow); WSL
 # uses the Linux binary.
 
+echo "The oh-my-grok enterprise installer is disabled in v1." >&2
+exit 1
+
 set -e
 
 TARGET="$1"

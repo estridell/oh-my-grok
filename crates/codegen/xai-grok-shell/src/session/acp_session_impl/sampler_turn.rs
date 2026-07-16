@@ -277,6 +277,10 @@ impl SessionActor {
         let use_bearer_resolver = gate.active();
         self.log_auth_gate_unknown("reconstruct_full_config", gate, &cfg.base_url);
         let auth_scheme = model_facts.auth_scheme;
+        let codex_responses = matches!(
+            cfg.api_backend,
+            xai_grok_sampling_types::ApiBackend::CodexResponses
+        );
         let mut extra_headers = cfg.extra_headers;
         crate::agent::config::inject_url_derived_headers(
             &mut extra_headers,
@@ -307,9 +311,30 @@ impl SessionActor {
                 extra_headers.insert("x-compaction-at".to_string(), value.to_string());
             }
         }
+        let mut api_key = creds.api_key;
+        let mut base_url = cfg.base_url;
+        if codex_responses {
+            base_url = crate::auth::chatgpt::CODEX_BASE_URL.to_string();
+            let chatgpt_credentials = match crate::auth::chatgpt::ensure_fresh().await {
+                Ok(credentials) => Some(credentials),
+                Err(err) => {
+                    tracing::warn!(error = %err, "ChatGPT credential refresh failed");
+                    crate::auth::chatgpt::load().ok()
+                }
+            };
+            if let Some(credentials) = chatgpt_credentials {
+                api_key = Some(credentials.access_token);
+                if let Some(account_id) = credentials.account_id {
+                    extra_headers.insert("chatgpt-account-id".to_string(), account_id);
+                }
+            } else {
+                api_key = None;
+            }
+            extra_headers.insert("originator".to_string(), "oh-my-grok".to_string());
+        }
         SamplingConfig {
-            api_key: creds.api_key,
-            base_url: cfg.base_url,
+            api_key,
+            base_url,
             model: cfg.model,
             max_completion_tokens: cfg.max_completion_tokens,
             temperature: cfg.temperature,
@@ -336,7 +361,7 @@ impl SessionActor {
                 .map(|a| a.user_id),
             origin_client: self.origin_client.clone(),
             attribution_callback: self.attribution_callback.clone(),
-            bearer_resolver: if use_bearer_resolver {
+            bearer_resolver: if use_bearer_resolver && !codex_responses {
                 self.auth_manager
                     .as_ref()
                     .map(|am| -> xai_grok_sampler::SharedBearerResolver {

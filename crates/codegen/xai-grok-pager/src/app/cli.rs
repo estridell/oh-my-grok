@@ -382,9 +382,9 @@ fn version_with_channel() -> &'static str {
 }
 #[derive(Debug, Clone, Parser)]
 #[command(
-    name = "grok",
+    name = "omg",
     version = version_with_channel(),
-    about = "Grok Build TUI",
+    about = "oh-my-grok coding agent",
     disable_version_flag = true,
     next_display_order = None,
     help_template = "\
@@ -408,7 +408,7 @@ pub struct PagerArgs {
     /// Working directory.
     #[arg(long)]
     pub cwd: Option<PathBuf>,
-    /// Use a custom leader socket path instead of the default `~/.grok/leader.sock`.
+    /// Use a custom leader socket path instead of the default `~/.oh-my-grok/leader.sock`.
     #[arg(
         long = "leader-socket",
         value_name = "PATH",

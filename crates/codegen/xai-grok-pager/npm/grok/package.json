@@ -1,5 +1,6 @@
 {
     "name": "@xai-official/grok",
+    "private": true,
     "version": "0.1.220-alpha.4",
     "description": "Bring Grok into your terminal",
     "license": "Apache-2.0",

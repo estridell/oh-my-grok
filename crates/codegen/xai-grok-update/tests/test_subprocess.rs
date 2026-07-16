@@ -1,4 +1,4 @@
-//! Subprocess-based integration tests using fake `npm` / `gh` shell scripts
+//! Subprocess-based integration tests using fake `npm` shell scripts
 //! placed first on `PATH`.
 //!
 //! `auto_update::install_npm` and `version::fetch_npm_tag` spawn `npm` by
@@ -7,8 +7,6 @@
 //! that logs its args and prints canned stdout, then prepend that tempdir
 //! to `PATH` for the duration of the test.
 //!
-//! Same pattern for `gh` for the `gh-release` installer paths.
-//!
 //! All tests in this file mutate `PATH` (global), so they're serialized with
 //! `#[serial]`.
 
@@ -16,14 +14,14 @@
 
 mod common;
 
-use std::time::Duration;
-
 use serial_test::serial;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use common::FakeBinGuard;
 use xai_grok_update::auto_update::install_npm_for_test;
 use xai_grok_update::version::{
-    fetch_gh_release_version, fetch_npm_tag_for_test, fetch_npm_version_for_test,
+    fetch_gh_release_version_from_base, fetch_npm_tag_for_test, fetch_npm_version_for_test,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,7 +62,7 @@ async fn fetch_npm_tag_passes_pkg_and_tag_to_npm() {
     let args = &log[0];
     assert!(args.contains("view"), "args: {args}");
     // For "latest" tag, no `@latest` suffix is appended in pkg_spec.
-    assert!(args.contains("@xai-official/grok"), "args: {args}");
+    assert!(args.contains("oh-my-grok"), "args: {args}");
     assert!(!args.contains("@latest"), "args: {args}");
     assert!(args.contains("--json"), "args: {args}");
 }
@@ -79,11 +77,7 @@ async fn fetch_npm_tag_alpha_appends_at_alpha_suffix() {
     assert_eq!(v, "0.1.181-alpha.1");
 
     let log = g.args_log();
-    assert!(
-        log[0].contains("@xai-official/grok@alpha"),
-        "args: {}",
-        log[0]
-    );
+    assert!(log[0].contains("oh-my-grok@alpha"), "args: {}", log[0]);
 }
 
 #[tokio::test]
@@ -217,7 +211,7 @@ async fn install_npm_calls_npm_with_version_arg() {
     assert_eq!(log.len(), 1, "exactly one npm invocation");
     let args = &log[0];
     assert!(args.contains("i -g"), "args: {args}");
-    assert!(args.contains("@xai-official/grok@0.1.181"), "args: {args}");
+    assert!(args.contains("oh-my-grok@0.1.181"), "args: {args}");
 }
 
 #[tokio::test]
@@ -228,7 +222,7 @@ async fn install_npm_falls_back_to_dist_tag_on_no_target() {
     install_npm_for_test(None, "stable", None).unwrap();
     let log = g.args_log();
     assert!(
-        log[0].contains("@xai-official/grok@latest"),
+        log[0].contains("oh-my-grok@latest"),
         "stable channel uses @latest dist-tag: {}",
         log[0]
     );
@@ -242,7 +236,7 @@ async fn install_npm_falls_back_to_alpha_dist_tag_on_alpha_channel() {
     install_npm_for_test(None, "alpha", None).unwrap();
     let log = g.args_log();
     assert!(
-        log[0].contains("@xai-official/grok@alpha"),
+        log[0].contains("oh-my-grok@alpha"),
         "alpha channel uses @alpha dist-tag: {}",
         log[0]
     );
@@ -322,125 +316,57 @@ async fn install_npm_no_token_no_userconfig() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// fetch_gh_release_version — exercises the `gh release list` shell-out.
+// fetch_gh_release_version — anonymous HTTP release asset.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[serial]
-async fn fetch_gh_release_stable_returns_tag_stripped() {
-    let g = FakeBinGuard::install_gh();
-    // For stable channel, only the `--exclude-pre-releases` invocation is made.
-    g.set_stable_only_stdout("v0.1.181\n");
-
-    let v = fetch_gh_release_version("stable").await.unwrap();
-    assert_eq!(v, "0.1.181");
-
-    let log = g.args_log();
-    assert_eq!(log.len(), 1);
-    assert!(
-        log[0].contains("--exclude-pre-releases"),
-        "args: {}",
-        log[0]
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn fetch_gh_release_stable_handles_tag_without_v_prefix() {
-    let g = FakeBinGuard::install_gh();
-    g.set_stable_only_stdout("0.1.181");
-
-    let v = fetch_gh_release_version("stable").await.unwrap();
+async fn fetch_gh_release_stable_reads_version_asset() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/latest/download/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("0.1.181\n"))
+        .mount(&server)
+        .await;
+    let v = fetch_gh_release_version_from_base("stable", &server.uri())
+        .await
+        .unwrap();
     assert_eq!(v, "0.1.181");
 }
 
 #[tokio::test]
-#[serial]
-async fn fetch_gh_release_alpha_returns_max_of_pre_and_stable() {
-    // Alpha channel makes two `gh release list` calls (with and without
-    // --exclude-pre-releases) and returns the semver-max.
-    let g = FakeBinGuard::install_gh();
-    g.set_with_pre_stdout("v0.1.182-alpha.1");
-    g.set_stable_only_stdout("v0.1.181");
-
-    let v = fetch_gh_release_version("alpha").await.unwrap();
-    assert_eq!(v, "0.1.182-alpha.1");
-    assert_eq!(g.args_log().len(), 2);
-}
-
-#[tokio::test]
-#[serial]
-async fn fetch_gh_release_alpha_returns_stable_when_higher() {
-    let g = FakeBinGuard::install_gh();
-    g.set_with_pre_stdout("v0.1.180-alpha.5");
-    g.set_stable_only_stdout("v0.1.181");
-
-    let v = fetch_gh_release_version("alpha").await.unwrap();
-    assert_eq!(v, "0.1.181");
-}
-
-#[tokio::test]
-#[serial]
-async fn fetch_gh_release_propagates_gh_failure() {
-    let g = FakeBinGuard::install_gh();
-    g.set_exit_code(1);
-
-    let err = fetch_gh_release_version("stable").await.unwrap_err();
+async fn fetch_gh_release_rejects_http_failure() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/latest/download/version"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let err = fetch_gh_release_version_from_base("stable", &server.uri())
+        .await
+        .unwrap_err();
     let msg = format!("{err:#}");
-    assert!(msg.contains("gh release list"), "msg: {msg}");
-    assert!(msg.contains("failed"), "msg: {msg}");
+    assert!(msg.contains("404"), "msg: {msg}");
 }
 
 #[tokio::test]
-#[serial]
 async fn fetch_gh_release_empty_response_returns_err() {
-    let g = FakeBinGuard::install_gh();
-    g.set_stable_only_stdout("");
-
-    let err = fetch_gh_release_version("stable").await.unwrap_err();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/latest/download/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .mount(&server)
+        .await;
+    let err = fetch_gh_release_version_from_base("stable", &server.uri())
+        .await
+        .unwrap_err();
     let msg = format!("{err:#}");
-    assert!(msg.contains("No releases found"), "msg: {msg}");
+    assert!(msg.contains("empty version asset"), "msg: {msg}");
 }
 
 #[tokio::test]
-#[serial]
-async fn fetch_gh_release_passes_repo_flag() {
-    let g = FakeBinGuard::install_gh();
-    g.set_stable_only_stdout("v0.1.181");
-
-    let _ = fetch_gh_release_version("stable").await.unwrap();
-    let log = g.args_log();
-    assert!(log[0].contains("--repo"), "args: {}", log[0]);
-    assert!(
-        log[0].contains("xai-org-shared/grok-build"),
-        "args: {}",
-        log[0]
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn fetch_gh_release_uses_jq_to_extract_tag() {
-    // The function constructs `gh release list --json tagName --jq '.[0].tagName'`
-    // — we verify the args include the jq filter so a refactor doesn't accidentally
-    // drop it.
-    let g = FakeBinGuard::install_gh();
-    g.set_stable_only_stdout("v0.1.181");
-
-    let _ = fetch_gh_release_version("stable").await.unwrap();
-    let log = g.args_log();
-    assert!(log[0].contains("--json"), "args: {}", log[0]);
-    assert!(log[0].contains("--jq"), "args: {}", log[0]);
-}
-
-#[tokio::test]
-#[serial]
-async fn fetch_gh_release_does_not_hang_on_quick_responses() {
-    // Sanity: every call should return well under our test timeout.
-    let g = FakeBinGuard::install_gh();
-    g.set_stable_only_stdout("v0.1.181");
-
-    let res =
-        tokio::time::timeout(Duration::from_secs(5), fetch_gh_release_version("stable")).await;
-    assert!(res.is_ok(), "should not hang");
+async fn fetch_gh_release_rejects_prerelease_channel() {
+    let err = fetch_gh_release_version_from_base("alpha", "http://unused.invalid")
+        .await
+        .unwrap_err();
+    assert!(format!("{err:#}").contains("only stable"));
 }

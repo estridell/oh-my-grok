@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::fs;
@@ -10,21 +10,16 @@ use xai_grok_shell::env::GrokBuildEnvironment;
 use xai_grok_shell::util::grok_home::grok_home;
 
 const TTL_SECONDS_BEFORE_AUTO_UPDATE: Duration = Duration::from_secs(60 * 30);
-const NPM_PACKAGE: &str = "@xai-official/grok";
-pub const GH_RELEASE_REPO: &str = "xai-org-shared/grok-build";
-
-/// Primary CLI base URL: Cloudflare-fronted x.ai endpoint with edge caching
-/// for binaries and origin-respecting no-cache for channel pointers.
-pub(crate) const CLI_BASE_URL_PRIMARY: &str = "https://x.ai/cli";
-
-/// Fallback CLI base URL: direct GCS, used when the primary is unreachable
-/// (Cloudflare outage, regional CF egress issue, DNS hijack, etc.).
-pub(crate) const CLI_BASE_URL_FALLBACK: &str =
-    "https://storage.googleapis.com/grok-build-public-artifacts/cli";
+const NPM_PACKAGE: &str = "oh-my-grok";
+pub const GH_RELEASE_REPO: &str = "estridell/oh-my-grok";
+pub const GH_RELEASE_BASE_URL: &str = "https://github.com/estridell/oh-my-grok/releases";
 
 /// CLI base URLs in preference order. Callers (channel-pointer fetch, binary
 /// download, in-app updater) try each in turn and stop at the first success.
-pub(crate) const CLI_BASE_URLS: &[&str] = &[CLI_BASE_URL_PRIMARY, CLI_BASE_URL_FALLBACK];
+// The fork must never replace itself with an upstream xAI artifact. Release
+// installs update from this fork's GitHub Releases; there is no fork-owned
+// channel bucket yet.
+pub(crate) const CLI_BASE_URLS: &[&str] = &[];
 
 /// Minimal configuration the update system needs from the environment.
 ///
@@ -171,56 +166,36 @@ async fn fetch_npm_tag(tag: &str, npm_registry: Option<&str>) -> Result<String> 
     }
 }
 
-/// Fetch the latest version from GitHub Releases using `gh release list`.
-/// For alpha channel, fetches both pre-release and stable-only, returns the
-/// semver-greater — `gh release list --limit 1` orders by publication date,
-/// not semver, so we need both to guarantee correctness.
+/// Fetch the latest stable version from the public GitHub Release assets.
+///
+/// The release workflow publishes a plain-text `version` asset. Using the
+/// stable `latest/download/version` redirect keeps update checks anonymous
+/// and avoids requiring the GitHub CLI on user machines.
 #[doc(hidden)]
 pub async fn fetch_gh_release_version(channel: &str) -> Result<String> {
-    if channel == "alpha" {
-        let (with_pre, stable_only) = tokio::try_join!(
-            fetch_gh_release_latest(false),
-            fetch_gh_release_latest(true),
-        )?;
-        return semver_max(&with_pre, &stable_only);
-    }
-    fetch_gh_release_latest(true).await
+    fetch_gh_release_version_from_base(channel, GH_RELEASE_BASE_URL).await
 }
 
-async fn fetch_gh_release_latest(exclude_pre: bool) -> Result<String> {
-    let mut args = vec![
-        "release",
-        "list",
-        "--repo",
-        GH_RELEASE_REPO,
-        "--limit",
-        "1",
-        "--exclude-drafts",
-        "--json",
-        "tagName",
-        "--jq",
-        ".[0].tagName",
-    ];
-    if exclude_pre {
-        args.push("--exclude-pre-releases");
+#[doc(hidden)]
+pub async fn fetch_gh_release_version_from_base(channel: &str, base_url: &str) -> Result<String> {
+    if channel != "stable" {
+        anyhow::bail!("unsupported GitHub release channel '{channel}'; only stable is available");
     }
-    let mut cmd = Command::new("gh");
-    cmd.args(&args).stdin(std::process::Stdio::null());
-    xai_grok_tools::util::detach_command(&mut cmd);
-    cmd.envs(xai_grok_tools::util::pager_env());
-    let output = cmd.output().await?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("gh release list failed: {}", stderr.trim());
-    }
-
-    let tag = String::from_utf8(output.stdout)?.trim().to_string();
-    // Tags are formatted as "v0.1.141", strip the leading "v"
-    let version = tag.strip_prefix('v').unwrap_or(&tag).to_string();
+    let url = format!("{}/latest/download/version", base_url.trim_end_matches('/'));
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?
+        .get(&url)
+        .header(reqwest::header::USER_AGENT, "oh-my-grok-updater")
+        .send()
+        .await?
+        .error_for_status()?;
+    let version = response.text().await?.trim().to_string();
     if version.is_empty() {
-        anyhow::bail!("No releases found in {}", GH_RELEASE_REPO);
+        anyhow::bail!("empty version asset at {url}");
     }
+    semver::Version::parse(&version)
+        .with_context(|| format!("invalid semver in GitHub release version asset: '{version}'"))?;
     Ok(version)
 }
 
@@ -393,7 +368,7 @@ pub async fn write_version_cache(version: &str, stable_version: Option<&str>) {
 ///
 /// - `"npm"` — uses `npm view` against the public registry.
 /// - `"internal"` — reads the channel pointer from the public GCS bucket.
-/// - `"gh-release"` — uses `gh release list` against GitHub Releases.
+/// - `"gh-release"` — reads the anonymous GitHub Release `version` asset.
 pub async fn get_latest_version(installer: &str, config: &UpdateConfig) -> Result<String> {
     let version = fetch_latest_version(installer, config).await?;
     let stable_ptr = try_fetch_stable_pointer().await;
@@ -416,24 +391,23 @@ pub async fn is_version_cache_fresh() -> bool {
 
 pub use xai_grok_version::installed as get_installed_grok_version;
 
-/// Version of the managed grok binary currently on disk, read from the
-/// `~/.grok/bin/grok` symlink target (`../downloads/grok-<version>-<platform>`)
+/// Version of the managed oh-my-grok binary currently on disk, read from the
+/// `~/.oh-my-grok/bin/omg` symlink target
+/// (`../downloads/omg-<version>-<platform>`)
 /// without exec'ing anything.
 ///
 /// Concurrent updaters (TUI background download, leader hourly checker,
-/// explicit `grok update`) decide staleness from this instead of their own
+/// explicit `omg update`) decide staleness from this instead of their own
 /// compiled-in version, so a binary another process already installed is
 /// never downloaded a second time.
 ///
 /// Returns `None` when there is no parseable managed symlink (Windows
 /// copy-based installs, dev builds) or when the symlink is DANGLING — a
-/// link whose target binary was deleted (e.g. manual `~/.grok/downloads`
+/// link whose target binary was deleted (e.g. manual `~/.oh-my-grok/downloads`
 /// cleanup) must not report an installed version, or every updater would
 /// claim "already up to date" forever while no runnable binary exists.
 /// NOTE: the symlink existing does not prove the *active installer*
-/// maintains it — npm manages its own global install and a leftover symlink
-/// from a previous internal install would lie about the npm install's
-/// version. Callers must gate on the installer (see
+/// maintains it. Callers must gate on the installer (see
 /// `disk_version_for_installer` in `auto_update`).
 pub fn installed_on_disk_version() -> Option<String> {
     #[cfg(unix)]
@@ -443,7 +417,7 @@ pub fn installed_on_disk_version() -> Option<String> {
         // metadata() follows the symlink: Err means the target is gone
         // (dangling link) and the version it names is not actually on disk.
         std::fs::metadata(&app).ok()?;
-        version_from_versioned_binary_name(target.file_name()?.to_str()?, "grok")
+        version_from_versioned_binary_name(target.file_name()?.to_str()?, "omg")
     }
     #[cfg(not(unix))]
     {
@@ -453,13 +427,11 @@ pub fn installed_on_disk_version() -> Option<String> {
 
 /// Extract the `<version>` portion of a versioned binary file name.
 ///
-/// Handles the internal layout (`grok-0.1.150-macos-aarch64`, including
-/// pre-releases: `grok-0.1.150-alpha.1-linux-x86_64` → `0.1.150-alpha.1`)
-/// and the npm layout without a platform suffix (`grok-0.1.150`,
-/// `grok-0.1.150-alpha.1`): everything between the `{bin_prefix}-` prefix
-/// and the first platform-OS component is the version, validated as semver
-/// so unknown layouts (`grok-latest`, `grok-pager-*` when `bin_prefix` is
-/// `grok`) return `None` instead of garbage.
+/// Handles the release layout (`omg-0.1.150-macos-aarch64`, including
+/// pre-releases: `omg-0.1.150-alpha.1-linux-x86_64` → `0.1.150-alpha.1`):
+/// everything between the `{bin_prefix}-` prefix and the first platform-OS
+/// component is the version, validated as semver so unknown layouts return
+/// `None` instead of garbage.
 ///
 /// Shared by the disk-version probe above and `cleanup_old_downloads` in
 /// `auto_update` — keep it the single place that understands this naming.
@@ -489,16 +461,13 @@ pub(crate) fn version_from_versioned_binary_name(name: &str, bin_prefix: &str) -
 /// return `None`; the label will populate on the next successful TTL check
 /// (~30 min). This keeps startup and post-install paths fast.
 pub(crate) async fn try_fetch_stable_pointer() -> Option<String> {
-    tokio::time::timeout(Duration::from_millis(500), async {
-        for base in CLI_BASE_URLS {
-            if let Ok(v) = fetch_gcs_channel_pointer("stable", base).await {
-                return Some(v);
-            }
-        }
-        None
-    })
+    tokio::time::timeout(
+        Duration::from_millis(500),
+        fetch_gh_release_version("stable"),
+    )
     .await
-    .unwrap_or(None)
+    .ok()
+    .and_then(Result::ok)
 }
 
 /// Read the cached stable version from `~/.grok/version.json` (sync, for display).
@@ -586,29 +555,25 @@ mod tests {
     }
 
     /// Disk-version probe: parsing the version out of the managed install's
-    /// symlink-target file name (`grok-<version>-<platform>`).
+    /// symlink-target file name (`omg-<version>-<platform>`).
     #[test]
     fn test_version_from_versioned_binary_name() {
         let cases: &[(&str, Option<&str>)] = &[
-            ("grok-0.2.46-darwin-arm64", Some("0.2.46")),
-            ("grok-0.1.220-linux-x86_64", Some("0.1.220")),
-            ("grok-0.2.5-windows-x86_64.exe", Some("0.2.5")),
+            ("omg-0.2.46-macos-aarch64", Some("0.2.46")),
+            ("omg-0.1.220-linux-x86_64", Some("0.1.220")),
             // Pre-releases must round-trip whole — truncating to "0.1.220"
             // would make an alpha install masquerade as the release and
             // mask alpha → stable updates.
-            ("grok-0.1.220-alpha.4-linux-x86_64", Some("0.1.220-alpha.4")),
-            ("grok-0.1.220-alpha.4", Some("0.1.220-alpha.4")), // npm layout
-            ("grok-pager-0.1.5-darwin-arm64", None),           // "pager" is not a version
-            ("grok-garbage-darwin-arm64", None),               // unparseable version
-            ("grok-0.2.46", Some("0.2.46")),                   // no platform suffix
-            ("other-0.2.46-darwin-arm64", None),               // wrong prefix
-            ("grok-latest", None),                             // symlink alias, not a version
-            ("grok", None),                                    // bare name
+            ("omg-0.1.220-alpha.4-linux-x86_64", Some("0.1.220-alpha.4")),
+            ("omg-garbage-macos-aarch64", None), // unparseable version
+            ("other-0.2.46-macos-aarch64", None), // wrong prefix
+            ("omg-latest", None),                // symlink alias, not a version
+            ("omg", None),                       // bare name
             ("", None),
         ];
         for (name, expected) in cases {
             assert_eq!(
-                version_from_versioned_binary_name(name, "grok").as_deref(),
+                version_from_versioned_binary_name(name, "omg").as_deref(),
                 *expected,
                 "version_from_versioned_binary_name({name:?})"
             );

@@ -320,7 +320,16 @@ impl acp::Agent for MvpAgent {
             has_auth_provider_command: has_auth_provider,
             preferred_method,
         });
-        let auth_methods = built.methods;
+        let mut auth_methods = built.methods;
+        let chatgpt_configured = crate::auth::chatgpt::is_configured();
+        let default_auth_method_id = built.default_auth_method_id.or_else(|| {
+            chatgpt_configured.then(|| {
+                acp::AuthMethodId::new(crate::auth::chatgpt::AUTH_METHOD_ID)
+            })
+        });
+        // Keep xAI ordering/default semantics intact; ChatGPT becomes the
+        // eager default only when it is configured and no xAI credential won.
+        auth_methods.push(auth_method::openai_codex_auth_method());
         xai_grok_telemetry::unified_log::info(
             "auth: initialize() built auth_methods for ACP response",
             None,
@@ -335,7 +344,8 @@ impl acp::Agent for MvpAgent {
                     init_is_expired, "auth_mode" : self.auth_manager.current().map(| a |
                     format!("{:?}", a.auth_mode)), "methods" : auth_methods.iter().map(|
                     m | m.id().0.as_ref()).collect::< Vec < _ >> (),
-                    "default_auth_method_id" : built.default_auth_method_id.as_ref()
+                    "chatgpt_configured" : chatgpt_configured,
+                    "default_auth_method_id" : default_auth_method_id.as_ref()
                     .map(| id | id.0.as_ref()), }
                 ),
             ),
@@ -348,11 +358,10 @@ impl acp::Agent for MvpAgent {
              when has_external_api_key is true; got {:?}",
             auth_methods.first().map(| m | m.id()),
         );
-        let default_auth_method_id_wire: Option<String> = built
-            .default_auth_method_id
+        let default_auth_method_id_wire: Option<String> = default_auth_method_id
             .as_ref()
             .map(|id| id.0.to_string());
-        if let Some(default_id) = built.default_auth_method_id {
+        if let Some(default_id) = default_auth_method_id {
             xai_grok_telemetry::unified_log::info(
                 "auth method selection",
                 None,
@@ -446,7 +455,9 @@ impl acp::Agent for MvpAgent {
             None,
             Some(serde_json::json!({ "method" : arguments.method_id.0.as_ref() })),
         );
-        if let Some(preferred) = self.cfg.borrow().grok_com_config.preferred_method {
+        if arguments.method_id.0.as_ref() != crate::auth::chatgpt::AUTH_METHOD_ID
+            && let Some(preferred) = self.cfg.borrow().grok_com_config.preferred_method
+        {
             let kind = auth_method::AuthMethodKind::from_id(&arguments.method_id);
             let allowed = match preferred {
                 crate::auth::PreferredAuthMethod::ApiKey => kind.is_api_key(),
@@ -471,6 +482,52 @@ impl acp::Agent for MvpAgent {
             }
         }
         match arguments.method_id.0.as_ref() {
+            crate::auth::chatgpt::AUTH_METHOD_ID => {
+                let auth_meta = AuthRequestMeta::from_json(arguments.meta.as_ref());
+                if auth_meta.reauth {
+                    let _ = crate::auth::chatgpt::logout();
+                }
+                let result = if !auth_meta.force_interactive
+                    && !auth_meta.reauth
+                    && crate::auth::chatgpt::is_configured()
+                {
+                    crate::auth::chatgpt::ensure_fresh().await
+                } else if !auth_meta.headless {
+                    let (url_tx, url_rx) = tokio::sync::oneshot::channel();
+                    let (code_tx, code_rx) = tokio::sync::mpsc::channel(1);
+                    *self.auth_code_tx.borrow_mut() = Some(code_tx);
+                    *self.auth_url_rx.borrow_mut() = Some(url_rx);
+                    let result = crate::auth::chatgpt::login(
+                        crate::auth::AuthChannels {
+                            url_tx: Some(url_tx),
+                            code_rx,
+                        },
+                        false,
+                    )
+                    .await;
+                    *self.auth_code_tx.borrow_mut() = None;
+                    *self.auth_url_rx.borrow_mut() = None;
+                    result
+                } else {
+                    let (_code_tx, code_rx) = tokio::sync::mpsc::channel(1);
+                    crate::auth::chatgpt::login(
+                        crate::auth::AuthChannels {
+                            url_tx: None,
+                            code_rx,
+                        },
+                        true,
+                    )
+                    .await
+                };
+                result.map_err(|err| {
+                    let mut error = acp::Error::auth_required();
+                    error.message = format!("ChatGPT login failed: {err}");
+                    error
+                })?;
+                self.set_auth_method(arguments.method_id.clone());
+                emit_login_span(true, crate::auth::chatgpt::AUTH_METHOD_ID, None, None);
+                Ok(self.auth_response_with_meta())
+            }
             auth_method::XAI_API_KEY_METHOD_ID => {
                 if self.cfg.borrow().grok_com_config.api_key_auth_disabled() {
                     emit_login_span(false, "api_key", None, Some("disabled_by_admin"));

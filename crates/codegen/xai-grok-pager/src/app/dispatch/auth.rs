@@ -1,5 +1,7 @@
 //! Login, logout, account switching, and auth-code submission dispatchers.
 
+use agent_client_protocol as acp;
+
 use super::ctx::{restore_auth_return_view, show_welcome};
 use super::queue::maybe_drain_queue;
 use super::router::dispatch;
@@ -216,6 +218,26 @@ pub(super) fn dispatch_login(app: &mut AppView) -> Vec<Effect> {
         },
         Effect::PollAuthUrl { request_seq },
     ]
+}
+
+pub(super) fn dispatch_login_with_method(
+    app: &mut AppView,
+    method_id: acp::AuthMethodId,
+) -> Vec<Effect> {
+    let Some(method) = app
+        .auth_methods
+        .iter()
+        .find(|method| method.id() == &method_id)
+    else {
+        app.auth_state = AuthState::Pending {
+            error: Some(format!("Login provider '{}' is not available", method_id.0)),
+        };
+        return vec![];
+    };
+    app.login_label = Some(method.name().to_string());
+    app.login_method_id = Some(method_id);
+    app.auth_start_mode = AuthMode::Pending;
+    dispatch_login(app)
 }
 
 /// Cancel a login that was started from inside a session and restore the

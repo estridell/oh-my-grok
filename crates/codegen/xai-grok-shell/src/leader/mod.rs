@@ -1336,8 +1336,8 @@ pub async fn connect_or_spawn(
 /// Resolve the binary to spawn as the leader subprocess.
 ///
 /// For a **managed install** — the running binary lives under `grok_home`
-/// (e.g. `~/.grok/...`) — prefer the managed `~/.grok/bin/grok` symlink. After an
-/// auto-update or `grok update` atomically swaps that symlink, `current_exe()`
+/// (e.g. `~/.oh-my-grok/...`) — prefer the managed `bin/omg` symlink. After an
+/// auto-update or `omg update` atomically swaps that symlink, `current_exe()`
 /// still resolves (via `/proc/self/exe` on Linux) to the *old* versioned target,
 /// so spawning it would relaunch the stale binary. The symlink always points to
 /// the freshly-installed version. This mirrors
@@ -1347,16 +1347,16 @@ pub async fn connect_or_spawn(
 /// not under `grok_home`), keep `current_exe()` so the spawned leader matches the
 /// calling binary.
 ///
-/// Falls back to `~/.grok/bin/grok` only when `current_exe()` is unavailable.
+/// Falls back to the managed `bin/omg` only when `current_exe()` is unavailable.
 fn resolve_exe_for_spawn() -> Result<std::path::PathBuf, ConnectionError> {
     resolve_binary_with_home(&crate::util::grok_home::grok_home())
 }
 fn resolve_binary_with_home(grok_home: &Path) -> Result<std::path::PathBuf, ConnectionError> {
     resolve_binary_impl(grok_home, std::env::current_exe().ok())
 }
-/// Binary file name for the managed grok install (`grok` / `grok.exe`).
+/// Binary file name for the managed oh-my-grok install (`omg` / `omg.exe`).
 fn managed_grok_bin_name() -> &'static str {
-    if cfg!(windows) { "grok.exe" } else { "grok" }
+    if cfg!(windows) { "omg.exe" } else { "omg" }
 }
 /// Core leader-binary resolution with the current-exe path injected, for testability.
 fn resolve_binary_impl(
@@ -2108,7 +2108,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let bin_dir = temp.path().join("bin");
         std::fs::create_dir_all(&bin_dir).unwrap();
-        std::fs::write(bin_dir.join("grok"), "fake-binary").unwrap();
+        std::fs::write(bin_dir.join(managed_grok_bin_name()), "fake-binary").unwrap();
         let result = resolve_binary_with_home(temp.path()).unwrap();
         let current = std::env::current_exe().unwrap();
         assert_eq!(result, current);
@@ -2125,9 +2125,9 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let bin_dir = temp.path().join("bin");
         std::fs::create_dir_all(&bin_dir).unwrap();
-        let target_v2 = bin_dir.join("grok-v2");
+        let target_v2 = bin_dir.join("omg-v2");
         std::fs::write(&target_v2, "new-binary").unwrap();
-        std::os::unix::fs::symlink(&target_v2, bin_dir.join("grok")).unwrap();
+        std::os::unix::fs::symlink(&target_v2, bin_dir.join(managed_grok_bin_name())).unwrap();
         let result = resolve_binary_with_home(temp.path()).unwrap();
         let current = std::env::current_exe().unwrap();
         assert_eq!(result, current);
@@ -2138,11 +2138,11 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let bin_dir = temp.path().join("bin");
         std::fs::create_dir_all(&bin_dir).unwrap();
-        let new_target = bin_dir.join("grok-v2");
+        let new_target = bin_dir.join("omg-v2");
         std::fs::write(&new_target, "new-binary").unwrap();
-        let managed = bin_dir.join("grok");
+        let managed = bin_dir.join(managed_grok_bin_name());
         std::os::unix::fs::symlink(&new_target, &managed).unwrap();
-        let stale_target = bin_dir.join("grok-v1");
+        let stale_target = bin_dir.join("omg-v1");
         std::fs::write(&stale_target, "old-binary").unwrap();
         let result = resolve_binary_impl(temp.path(), Some(stale_target)).unwrap();
         assert_eq!(result, managed);

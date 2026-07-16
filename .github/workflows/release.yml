@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Validate stable version tag
+        id: version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "Release tags must use stable semver: vX.Y.Z" >&2
+            exit 1
+          fi
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch64
+          - runner: macos-15-intel
+            platform: macos-x86_64
+          - runner: macos-15
+            platform: macos-aarch64
+    runs-on: ${{ matrix.runner }}
+    env:
+      CARGO_INCREMENTAL: "0"
+      GROK_VERSION: ${{ needs.validate.outputs.version }}
+      PROTOC: protoc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler pkg-config libssl-dev
+
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install protobuf
+
+      - name: Build omg
+        run: >-
+          cargo build --locked --profile release-dist
+          -p xai-grok-pager-bin --bin omg --features release-dist
+
+      - name: Stage and smoke-test artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          asset="omg-${GROK_VERSION}-${{ matrix.platform }}"
+          cp target/release-dist/omg "dist/$asset"
+          chmod +x "dist/$asset"
+          output=$("dist/$asset" --version)
+          echo "$output"
+          [[ "$output" == "omg ${GROK_VERSION}"* ]]
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omg-${{ matrix.platform }}
+          path: dist/omg-*
+          if-no-files-found: error
+
+  publish:
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: omg-*
+          path: dist
+          merge-multiple: true
+
+      - name: Stage installer metadata
+        shell: bash
+        run: |
+          cp crates/codegen/xai-grok-pager/scripts/install.sh dist/install.sh
+          printf '%s\n' "$VERSION" > dist/version
+          cd dist
+          sha256sum omg-* > SHA256SUMS
+
+      - name: Create draft release
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --draft \
+            --title "oh-my-grok $VERSION" \
+            --generate-notes
+
+      - name: Upload complete release and publish
+        shell: bash
+        run: |
+          gh release upload "$GITHUB_REF_NAME" dist/*
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

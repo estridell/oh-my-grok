@@ -16,6 +16,9 @@ param(
     [string]$Version
 )
 
+Write-Error "The oh-my-grok PowerShell installer is disabled in v1. Use Linux or macOS with install.sh."
+exit 1
+
 $ErrorActionPreference = 'Stop'
 
 # PS 5.1 defaults to TLS 1.0; GCS requires TLS 1.2.
