@@ -130,13 +130,22 @@ When browser-based login isn't possible -- for example, on sandboxed VMs, CI run
 eyJhbGciOiJSUzI1NiIs...
 ```
 
-**JSON** -- with optional refresh token and expiry:
+**JSON** -- with optional refresh token, expiry, and issuer:
 
 ```json
-{"access_token": "eyJhbGciOi...", "refresh_token": "ref-tok", "expires_in": 3600}
+{"access_token": "eyJhbGciOi...", "refresh_token": "ref-tok", "expires_in": 3600, "issuer": "https://idp.example.com"}
 ```
 
 Use JSON if your tokens expire and you want OMG to automatically re-run the binary before expiry.
+
+JSON fields:
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `access_token` | yes | Bearer token OMG sends to the xAI API |
+| `refresh_token` | no | Stored for reference. OMG refreshes by re-running your binary, not with an OAuth refresh grant |
+| `expires_in` | no | Token lifetime in seconds; enables proactive refresh before expiry |
+| `issuer` | no | Identifies the token's issuer |
 
 ### Configuration
 
@@ -160,7 +169,7 @@ export GROK_AUTH_TOKEN_TTL=3600
 
 ### Token Refresh
 
-When OMG needs to refresh an expired token, it re-runs your binary with `GROK_AUTH_EXPIRED=1` set in the environment. Your binary can use this to take a faster silent-refresh path:
+When OMG needs to refresh an expired token, it re-runs your binary with `GROK_AUTH_EXPIRED=1` set in the environment. Each run fully replaces the stored credential, so emit the same JSON fields (such as `issuer`) on every invocation, including refreshes. Your binary can use this to take a faster silent-refresh path:
 
 ```bash
 #!/bin/sh
