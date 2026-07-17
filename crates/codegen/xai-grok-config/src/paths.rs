@@ -13,13 +13,14 @@ const CLAUDE_MANAGED_SETTINGS_PATH: &str = "/etc/claude-code/managed-settings.js
 
 /// The default oh-my-grok directory (`~/.oh-my-grok`, canonicalized) used when
 /// neither `OH_MY_GROK_HOME` nor the legacy `GROK_HOME` is set.
-/// whether [`grok_home()`] is the default without duplicating the computation.
+/// Exposed so callers can detect whether [`grok_home()`] is the default without
+/// duplicating the computation.
 ///
 /// Uses [`dunce::canonicalize`] instead of [`std::fs::canonicalize`]: on
 /// Windows, std returns a verbatim path (`\\?\C:\Users\...`) which external
 /// tools choke on — e.g. `git clone` rejects `\\?\` destinations with
 /// "Invalid argument", breaking marketplace cache clones under
-/// `~/.grok/marketplace-cache`. `dunce` strips the prefix whenever the path
+/// `~/.oh-my-grok/marketplace-cache`. `dunce` strips the prefix whenever the path
 /// is safely representable in legacy form; on non-Windows it is identical to
 /// `std::fs::canonicalize`.
 ///
@@ -51,11 +52,11 @@ pub fn grok_home() -> PathBuf {
         .clone()
 }
 
-/// The user-global grok home, but only when one genuinely resolves: `Some` when
-/// `$GROK_HOME` is set or a home directory is found, `None` otherwise. Unlike
-/// [`grok_home()`], this never falls back to a cwd-relative `.grok`, so callers
-/// that *scan* user-global grok resources (hooks, marketplace sources, ...) don't
-/// mistake a project's `.grok` tree for the user-global one when no home resolves.
+/// The user-global OMG home, but only when one genuinely resolves: `Some` when
+/// `OH_MY_GROK_HOME`, legacy `GROK_HOME`, or a home directory is available;
+/// `None` otherwise. Unlike [`grok_home()`], this never falls back to a
+/// cwd-relative `.oh-my-grok`, so callers that scan user-global resources do not
+/// mistake a project-local directory for the user-global one.
 pub fn user_grok_home() -> Option<PathBuf> {
     #[allow(deprecated)]
     let resolvable = std::env::var_os("OH_MY_GROK_HOME").is_some()
@@ -66,8 +67,13 @@ pub fn user_grok_home() -> Option<PathBuf> {
 
 /// Canonical application path under the resolved oh-my-grok home.
 pub fn grok_application() -> PathBuf {
+    grok_application_in(&grok_home())
+}
+
+/// [`grok_application`] under an explicit home instead of the resolved home.
+pub fn grok_application_in(home: &std::path::Path) -> PathBuf {
     let name = if cfg!(windows) { "omg.exe" } else { "omg" };
-    grok_home().join("bin").join(name)
+    home.join("bin").join(name)
 }
 
 /// System-wide config directory: `/etc/grok/` on Unix, `None` on Windows.

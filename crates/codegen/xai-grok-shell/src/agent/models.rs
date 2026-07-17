@@ -223,8 +223,8 @@ impl ModelsManager {
     ) -> Result<Self, String> {
         let has_session = auth_manager.current_or_expired().is_some();
         let is_session_auth = auth_manager
-            .auth_mode()
-            .is_some_and(|m| m.is_session_auth());
+            .current_or_expired()
+            .is_some_and(|a| a.is_session_auth());
         let fetch_auth = ModelFetchAuth::resolve(&cfg.endpoints, has_session);
         let prefetched_models = prefetched_models.or_else(|| {
             let cache = ModelsCacheManager::new();
@@ -366,8 +366,8 @@ impl ModelsManager {
     fn is_session_auth(&self) -> bool {
         self.inner
             .auth_manager
-            .auth_mode()
-            .is_some_and(|m| m.is_session_auth())
+            .current_or_expired()
+            .is_some_and(|a| a.is_session_auth())
     }
 
     /// ACP-visible (non-hidden) projection of the catalog.
@@ -2741,6 +2741,9 @@ mod tests {
         // Preferred model not in catalog — falls back to first entry.
         let mut new_cfg = config::Config::default();
         new_cfg.models.default = Some("grok-nonexistent".to_string());
+        // Keep the synthetic xAI catalog selectable without relying on ambient
+        // provider credentials.
+        new_cfg.endpoints.models_base_url = Some("http://localhost/v1".to_string());
         mgr.apply_config(new_cfg);
 
         let current = mgr.current_model_id();
