@@ -63,7 +63,7 @@ screen_mode = "fullscreen"             # default render mode: "fullscreen" | "mi
 
 [features]
 telemetry = false                      # anonymous usage telemetry
-feedback = true                        # feedback system (default: true)
+feedback = false                       # feedback submission to xAI (default: false, opt-in)
 lsp_tools = false                      # expose the lsp tool
 codebase_indexing = true               # code graph indexing
 two_pass_compaction = false            # prefire two-pass compaction (default: false, opt-in)
@@ -556,7 +556,7 @@ mixpanel_enabled = false                                  # disable Mixpanel pro
 trace_upload = false                                      # disable session/trace uploads (inherits the telemetry toggle when unset)
 ```
 
-Set these only to point telemetry at your own infrastructure or to turn parts of it off. The built-in endpoint and credentials are managed by OMG; leave them unset to use the defaults.
+Set these only to point telemetry at your own infrastructure or to turn parts of it off. oh-my-grok ships **no** built-in telemetry endpoint or credentials — `events_url`, `events_api_key`, and `mixpanel_token` are unset and nothing compiles them in. Left unset, the product-events and Mixpanel sinks send nowhere; only the internal trace pipeline and session/trace upload default to xAI's endpoint, and those run only when you turn telemetry (and trace upload) on. See `PRIVACY.md` at the repository root for the complete network behavior.
 
 The same `[telemetry]` table also configures the **external OpenTelemetry stream** — an independent opt-in (it does not require the telemetry toggle above) that ships a curated, content-free usage schema to your *own* OTLP collector. Collector auth is supplied via `OTEL_EXPORTER_OTLP_HEADERS` and is never stored on disk. See [Monitoring & Usage](24-monitoring-usage.md) for the full schema, env vars, and privacy model.
 

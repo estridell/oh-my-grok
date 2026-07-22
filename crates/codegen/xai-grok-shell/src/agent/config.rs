@@ -2077,20 +2077,17 @@ impl Config {
     }
     pub(crate) fn resolve_trace_upload(&self) -> Resolved<bool> {
         let mode = self.resolve_telemetry_mode();
-        // Remote settings may only *disable* trace upload, never enable it: a
-        // remote `false` is retained as a privacy/operational kill switch, but a
-        // remote `true` is dropped so xAI/X remote config cannot switch on
-        // GCS/OTLP uploads. Enablement still comes only from local signals (env,
-        // requirement pin, config) or the default-off telemetry mode.
-        let remote_kill = self
-            .remote_settings
-            .as_ref()
-            .and_then(|s| s.trace_upload_enabled)
-            .filter(|&enabled| !enabled);
+        // A remote `trace_upload_enabled = false` is an absolute kill switch: it
+        // disables uploads even after a local opt-in (env/config/requirement),
+        // so it must be applied ABOVE normal resolution, not as a low-precedence
+        // feature-flag layer. A remote `true` is never honored — remote config
+        // can only ever reduce data collection, never switch GCS/OTLP uploads on.
+        if self.remote_settings.as_ref().and_then(|s| s.trace_upload_enabled) == Some(false) {
+            return Resolved::new(false, ConfigSource::Remote);
+        }
         BoolFlag::env("GROK_TELEMETRY_TRACE_UPLOAD")
             .requirement(self.requirements.trace_upload.pinned())
             .config(self.telemetry.trace_upload)
-            .feature_flag(remote_kill)
             .default(mode.value.is_enabled())
             .resolve()
     }
@@ -8184,16 +8181,26 @@ reasoning_effort = "low"
         unsafe { std::env::remove_var("GROK_TELEMETRY_ENABLED") };
         unsafe { std::env::remove_var("GROK_TELEMETRY_TRACE_UPLOAD") };
 
-        // Telemetry locally on + remote false => disabled (kill switch honored).
+        // Local opt-in (config) + remote false => disabled: the kill switch must
+        // override a higher-precedence local enable, not just the default.
         let mut cfg = Config::default();
         cfg.features.telemetry = Some(TelemetryMode::Enabled);
+        cfg.telemetry.trace_upload = Some(true);
         cfg.remote_settings = Some(crate::util::config::RemoteSettings {
             trace_upload_enabled: Some(false),
             ..Default::default()
         });
         let r = cfg.resolve_trace_upload();
-        assert!(!r.value, "remote false must disable uploads");
+        assert!(!r.value, "remote false must override a local trace_upload=true");
         assert_eq!(r.source, ConfigSource::Remote);
+
+        // Env opt-in + remote false => still disabled (kill switch beats env).
+        unsafe { std::env::set_var("GROK_TELEMETRY_TRACE_UPLOAD", "true") };
+        assert!(
+            !cfg.resolve_trace_upload().value,
+            "remote false must override GROK_TELEMETRY_TRACE_UPLOAD=true"
+        );
+        unsafe { std::env::remove_var("GROK_TELEMETRY_TRACE_UPLOAD") };
 
         // Telemetry locally off + remote true => stays off (enable ignored).
         let mut cfg = Config::default();
