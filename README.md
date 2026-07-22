@@ -97,6 +97,14 @@ The user guide ships with the pager crate:
 — getting started, keyboard shortcuts, slash commands, configuration, theming,
 MCP servers, skills, plugins, hooks, headless mode, sandboxing, and more.
 
+## Privacy & telemetry
+
+**oh-my-grok does not phone home to xAI/X.** No analytics, usage events,
+diagnostics, crash reports, traces, or product telemetry are sent by default,
+and network-delivered remote configuration cannot re-enable them. Crash reports
+stay local. See [`PRIVACY.md`](PRIVACY.md) for the full network behavior and the
+xAI/X provider traffic that is retained for operations you explicitly request.
+
 ## Repository layout
 
 | Path | Contents |
