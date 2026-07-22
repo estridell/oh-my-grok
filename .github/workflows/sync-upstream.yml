@@ -18,6 +18,8 @@ jobs:
           fetch-depth: 0
       - name: Merge xAI upstream
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/xai-org/grok-build.git
           git fetch upstream main
           git checkout -B sync/upstream-${GITHUB_RUN_ID} origin/main
