@@ -2077,13 +2077,20 @@ impl Config {
     }
     pub(crate) fn resolve_trace_upload(&self) -> Resolved<bool> {
         let mode = self.resolve_telemetry_mode();
-        // No remote feature-flag layer: network-delivered remote settings must
-        // not be able to switch on GCS/OTLP trace uploads to xAI/X. Uploads
-        // follow only explicit local signals (env, requirement pin, config) and
-        // otherwise inherit the (default-off) telemetry mode.
+        // Remote settings may only *disable* trace upload, never enable it: a
+        // remote `false` is retained as a privacy/operational kill switch, but a
+        // remote `true` is dropped so xAI/X remote config cannot switch on
+        // GCS/OTLP uploads. Enablement still comes only from local signals (env,
+        // requirement pin, config) or the default-off telemetry mode.
+        let remote_kill = self
+            .remote_settings
+            .as_ref()
+            .and_then(|s| s.trace_upload_enabled)
+            .filter(|&enabled| !enabled);
         BoolFlag::env("GROK_TELEMETRY_TRACE_UPLOAD")
             .requirement(self.requirements.trace_upload.pinned())
             .config(self.telemetry.trace_upload)
+            .feature_flag(remote_kill)
             .default(mode.value.is_enabled())
             .resolve()
     }
@@ -2910,14 +2917,21 @@ pub fn is_telemetry_disabled_sync() -> bool {
         .enable_env(grok_telemetry_env_enabled)
         .resolve()
 }
-/// Like [`is_telemetry_disabled_sync`] but only `true` when telemetry is
-/// *explicitly* off; absence is not disabled (`.default(true)`) so remote-only
-/// enablement still builds the OTLP exporter (the runtime gate then governs it).
+/// Pre-runtime gate for building the internal OTLP trace exporter (which points
+/// at `cli-chat-proxy.grok.com/v1/traces`). Returns `true` — i.e. suppress the
+/// exporter — unless telemetry is explicitly turned on locally.
+///
+/// Upstream used `.default(true)` here (absence != disabled) so the exporter was
+/// built even without a local setting, to support remote-only enablement. That
+/// enablement path has been removed (see `resolve_telemetry_mode`), so an unset
+/// telemetry setting must now leave the exporter unbuilt — otherwise a fresh
+/// install would stand up an exporter aimed at xAI and could export after
+/// authentication, defeating the default-off guarantee.
 pub fn is_telemetry_explicitly_disabled_sync() -> bool {
     !SyncBoolFlag::new(telemetry_enabled_from_toml)
         .disable_env("DISABLE_TELEMETRY")
         .enable_env(grok_telemetry_env_enabled)
-        .default(true)
+        .default(false)
         .resolve()
 }
 /// Sync sibling of [`is_telemetry_disabled_sync`] scoped to Sentry. Inherits
@@ -8161,6 +8175,38 @@ reasoning_effort = "low"
         assert!(!r.value, "telemetry off must force trace upload off");
         assert!(!cfg.is_trace_upload_enabled());
     }
+    /// The remote layer is a one-way kill switch: a remote `false` disables
+    /// trace upload even when telemetry is locally enabled, but a remote `true`
+    /// is ignored (it must not switch uploads on).
+    #[test]
+    #[serial]
+    fn resolve_trace_upload_remote_flag_is_kill_switch_only() {
+        unsafe { std::env::remove_var("GROK_TELEMETRY_ENABLED") };
+        unsafe { std::env::remove_var("GROK_TELEMETRY_TRACE_UPLOAD") };
+
+        // Telemetry locally on + remote false => disabled (kill switch honored).
+        let mut cfg = Config::default();
+        cfg.features.telemetry = Some(TelemetryMode::Enabled);
+        cfg.remote_settings = Some(crate::util::config::RemoteSettings {
+            trace_upload_enabled: Some(false),
+            ..Default::default()
+        });
+        let r = cfg.resolve_trace_upload();
+        assert!(!r.value, "remote false must disable uploads");
+        assert_eq!(r.source, ConfigSource::Remote);
+
+        // Telemetry locally off + remote true => stays off (enable ignored).
+        let mut cfg = Config::default();
+        cfg.features.telemetry = Some(TelemetryMode::Disabled);
+        cfg.remote_settings = Some(crate::util::config::RemoteSettings {
+            trace_upload_enabled: Some(true),
+            ..Default::default()
+        });
+        assert!(
+            !cfg.resolve_trace_upload().value,
+            "remote true must never enable uploads"
+        );
+    }
     #[test]
     #[serial]
     fn resolve_trace_upload_explicit_config_wins_over_telemetry_off() {
@@ -10459,6 +10505,13 @@ telemetry = "garbage"
         unsafe { std::env::set_var("DISABLE_TELEMETRY", "1") };
         assert!(is_telemetry_explicitly_disabled_sync());
         unsafe { std::env::remove_var("DISABLE_TELEMETRY") };
+        // Absent setting must gate the OTLP exporter OFF: with remote-only
+        // enablement gone, a fresh install (no local telemetry signal) must not
+        // build an exporter aimed at xAI.
+        assert!(
+            is_telemetry_explicitly_disabled_sync(),
+            "unset telemetry must suppress the internal OTLP exporter"
+        );
     }
     #[test]
     fn version_overrides_apply_into_typed_config() {

@@ -36,10 +36,12 @@ pub fn init(config: Config) -> ClientInitGuard {
         return sentry::init(ClientOptions::default());
     }
 
-    let dsn = std::env::var("SENTRY_DSN")
-        .ok()
-        .or_else(|| option_env!("SENTRY_DSN").map(|s| s.to_string()))
-        .unwrap_or_default();
+    // Runtime env only — never a compile-time baked DSN. oh-my-grok is an
+    // independent fork; allowing `option_env!("SENTRY_DSN")` would let a release
+    // build ship an inherited error-reporting endpoint, the same phone-home risk
+    // removed for the other telemetry credentials. A DSN must be supplied
+    // explicitly at runtime.
+    let dsn = std::env::var("SENTRY_DSN").ok().unwrap_or_default();
 
     let scrubber = Scrubber::from_env();
 

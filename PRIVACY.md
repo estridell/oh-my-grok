@@ -19,18 +19,28 @@ explicitly opt in on your own machine:
 | --- | --- | --- |
 | Product analytics events | **Off** | No endpoint or API key is compiled in. The upstream `GROK_TELEMETRY_BUILD_*` compile-time baking has been removed, so a release build cannot ship an endpoint. |
 | Mixpanel | **Off** | No project token is compiled in; the Mixpanel client is never constructed. |
-| Internal OTLP trace firehose | **Off** | Only runs when telemetry is explicitly enabled *and* trace upload is on. |
-| Session-artifact / GCS trace upload | **Off** | Same gate as above. |
-| Error reporting (Sentry) | **Off** | No DSN is compiled in; inherits the (off) telemetry state. |
+| Internal OTLP trace firehose | **Off** | Not built on a fresh install; only runs when telemetry is explicitly enabled. Its endpoint then defaults to xAI's proxy (see below). |
+| Session-artifact / GCS trace upload | **Off** | Runs only when telemetry is explicitly enabled; a managed `false` remains a kill switch, but remote config can never turn it on. |
+| Error reporting (Sentry) | **Off** | No DSN is compiled in; a DSN can only be supplied at runtime via `SENTRY_DSN`. Inherits the (off) telemetry state. |
 | Feedback submission | **Off** | Posts user-authored content to xAI infrastructure, so it is opt-in only. |
 | External OpenTelemetry export | **Off** | Points at *your own* collector when you configure it — never xAI. |
 
 Telemetry can be enabled only by an explicit local signal — the
 `GROK_TELEMETRY_ENABLED` environment variable, the `[features] telemetry`
 config key, or an administrator requirement pin. **Network-delivered remote
-settings can never turn telemetry, trace upload, or feedback on.** If you enable
-telemetry yourself, you must also supply your own endpoint/token; nothing is
-sent to xAI/X unless you point it there.
+settings can never turn telemetry, trace upload, or feedback on** (a managed
+remote `false` is still honored as a kill switch).
+
+If you do opt in, be aware of where data goes:
+
+- **Product analytics events / Mixpanel** are sent nowhere unless you also
+  configure an endpoint or token (`GROK_TELEMETRY_EVENTS_URL`,
+  `GROK_TELEMETRY_MIXPANEL_TOKEN`, …) — none is baked in.
+- **Internal OTLP traces and session-artifact trace upload**, however, default
+  to xAI's `cli-chat-proxy.grok.com` endpoint. So enabling telemetry *and* trace
+  upload without overriding the endpoint will send traces and session artifacts
+  to xAI. Point them elsewhere with the OTLP / trace-upload endpoint overrides,
+  or leave telemetry off (the default) to send nothing.
 
 ## Crash reports stay local
 
