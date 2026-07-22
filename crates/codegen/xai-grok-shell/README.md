@@ -1331,7 +1331,7 @@ mixpanel_enabled = true                     # env: GROK_TELEMETRY_MIXPANEL_ENABL
 trace_upload = true                         # env: GROK_TELEMETRY_TRACE_UPLOAD
 ```
 
-When building from source, defaults can also be baked into the binary at compile time by setting `GROK_TELEMETRY_BUILD_EVENTS_URL`, `GROK_TELEMETRY_BUILD_EVENTS_API_KEY`, and `GROK_TELEMETRY_BUILD_MIXPANEL_TOKEN` in the build environment (providing a Mixpanel token this way also enables Mixpanel by default). Config-file and runtime env values override build-time defaults.
+oh-my-grok does **not** bake telemetry endpoints or credentials into the binary at build time. The upstream `GROK_TELEMETRY_BUILD_EVENTS_URL`, `GROK_TELEMETRY_BUILD_EVENTS_API_KEY`, and `GROK_TELEMETRY_BUILD_MIXPANEL_TOKEN` compile-time variables have been removed, so no build environment (or migrated upstream CI config) can ship a default telemetry sink. Telemetry is sent only when you supply `events_url`/`events_api_key`/`mixpanel_token` here or via the corresponding `GROK_TELEMETRY_*` runtime env vars. See [`PRIVACY.md`](../../../PRIVACY.md) at the repository root for the full network behavior.
 
 ### LSP Servers
 

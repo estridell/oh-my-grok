@@ -242,20 +242,77 @@ async fn fetch_managed_config(
 /// Persist a fetched response under `home`, converging disk to the served set: served
 /// artifacts are overwritten, unserved ones removed — a leftover must not keep enforcing
 /// a withdrawn policy or trip the signed absence check. Returns whether anything changed.
+/// Strip telemetry/feedback/trace-upload *enabling* keys from a server-served
+/// `managed_config.toml` / `requirements.toml` TOML document so that
+/// network-delivered managed config can never turn data collection on (issue
+/// #7). A *disabling* value is preserved, so a managed kill switch still works.
+///
+/// Applied only to UNSIGNED server content (see [`apply_fetched`]): a signed
+/// enterprise policy is left intact because its administrator is a trusted local
+/// operator and rewriting the bytes would break the at-rest signature. Local
+/// admin policy under `/etc/grok` is never touched — this only rewrites the
+/// grok-home artifacts the deployment-config sync itself writes.
+///
+/// Unparseable input is returned unchanged (the config loader already warns on
+/// and skips a malformed layer).
+fn strip_telemetry_enables(toml_str: &str) -> String {
+    let Ok(mut doc) = toml_str.parse::<toml_edit::DocumentMut>() else {
+        return toml_str.to_owned();
+    };
+    if let Some(features) = doc.get_mut("features").and_then(|i| i.as_table_like_mut()) {
+        // `[features] telemetry`: drop any enabling value (bool `true`, or a
+        // mode string that isn't a disable / is unrecognized); keep a disable.
+        let telemetry_enables = features.get("telemetry").is_some_and(|item| {
+            match item.as_value() {
+                Some(toml_edit::Value::Boolean(b)) => *b.value(),
+                Some(toml_edit::Value::String(s)) => {
+                    crate::agent::config::TelemetryMode::parse(s.value())
+                        .is_none_or(|m| !m.is_disabled())
+                }
+                _ => false,
+            }
+        });
+        if telemetry_enables {
+            features.remove("telemetry");
+        }
+        if features.get("feedback").and_then(|i| i.as_bool()) == Some(true) {
+            features.remove("feedback");
+        }
+    }
+    if let Some(tel) = doc.get_mut("telemetry").and_then(|i| i.as_table_like_mut())
+        && tel.get("trace_upload").and_then(|i| i.as_bool()) == Some(true)
+    {
+        tel.remove("trace_upload");
+    }
+    doc.to_string()
+}
+
 fn apply_managed_config(
     home: &std::path::Path,
     body: &ManagedConfigResponse,
+    sanitize: bool,
 ) -> std::io::Result<bool> {
     use crate::util::config::atomic_write_string;
 
+    // Unsigned server content is scrubbed of telemetry enables before it ever
+    // touches disk; signed policy is written verbatim so its signature verifies.
+    let prepare = |raw: Option<&str>| -> Option<String> {
+        raw.map(|s| {
+            if sanitize {
+                strip_telemetry_enables(s)
+            } else {
+                s.to_owned()
+            }
+        })
+    };
     let artifacts = [
         (
             xai_grok_config::MANAGED_CONFIG_FILENAME,
-            body.managed_config.as_deref(),
+            prepare(body.managed_config.as_deref()),
         ),
         (
             xai_grok_config::REQUIREMENTS_FILENAME,
-            body.requirements.as_deref(),
+            prepare(body.requirements.as_deref()),
         ),
     ];
 
@@ -263,7 +320,7 @@ fn apply_managed_config(
     let mut first_err: Option<std::io::Error> = None;
     for (name, content) in artifacts {
         let path = home.join(name);
-        match content.filter(|s| !s.is_empty()) {
+        match content.as_deref().filter(|s| !s.is_empty()) {
             Some(content) => {
                 clear_squatting_dir(&path);
                 match atomic_write_string(&path, content) {
@@ -646,7 +703,11 @@ fn apply_fetched(
     {
         evict_prior_managed_config(&home);
     }
-    let wrote = apply_managed_config(&home, body)?;
+    // Sanitize telemetry enables out of UNSIGNED server content only. When
+    // verification is active, `verified` is `Some` (an unsigned/invalid envelope
+    // would have returned `SignatureRejected` above), so signed policy is written
+    // verbatim and its at-rest signature stays valid.
+    let wrote = apply_managed_config(&home, body, verified.is_none())?;
     // Sidecar after policy files so a present sidecar covers the final set; clear dir squats
     // that would fail the atomic rename forever.
     if let Some(verified) = verified {

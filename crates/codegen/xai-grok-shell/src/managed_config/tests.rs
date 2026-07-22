@@ -29,7 +29,7 @@ fn apply_writes_and_overwrites_artifacts() {
         requirements: Some("[features]\nweb_fetch = false\n".into()),
         ..Default::default()
     };
-    assert!(apply_managed_config(home, &body).unwrap());
+    assert!(apply_managed_config(home, &body, false).unwrap());
 
     assert_eq!(
         std::fs::read_to_string(home.join("managed_config.toml")).unwrap(),
@@ -58,7 +58,7 @@ fn apply_removes_artifact_the_server_no_longer_serves() {
         requirements: None,
         ..Default::default()
     };
-    assert!(apply_managed_config(home, &body).unwrap());
+    assert!(apply_managed_config(home, &body, false).unwrap());
 
     assert!(home.join("managed_config.toml").exists());
     assert!(
@@ -74,14 +74,14 @@ fn apply_removes_artifact_the_server_no_longer_serves() {
         requirements: None,
         ..Default::default()
     };
-    assert!(apply_managed_config(home, &withdrawn).unwrap());
+    assert!(apply_managed_config(home, &withdrawn, false).unwrap());
     assert!(
         !home.join("managed_config.toml").exists(),
         "empty served content converges to absence"
     );
 
     // Converged state: another empty apply changes nothing.
-    assert!(!apply_managed_config(home, &withdrawn).unwrap());
+    assert!(!apply_managed_config(home, &withdrawn, false).unwrap());
 }
 
 /// Partial-write robustness: if one artifact lands and the other write
@@ -111,7 +111,7 @@ fn apply_partial_write_failure_keeps_written_artifact() {
         requirements: Some("[features]\nweb_fetch = false\n".into()),
         ..Default::default()
     };
-    let result = apply_managed_config(home, &body);
+    let result = apply_managed_config(home, &body, false);
 
     assert!(result.is_err(), "requirements write must fail");
     assert!(
@@ -140,7 +140,7 @@ fn apply_converges_over_a_squatting_directory() {
         requirements: None,
         ..Default::default()
     };
-    assert!(apply_managed_config(home, &body).unwrap());
+    assert!(apply_managed_config(home, &body, false).unwrap());
     assert_eq!(
         std::fs::read_to_string(home.join("managed_config.toml")).unwrap(),
         "[cli]\ntheme = \"dark\"\n",
@@ -177,6 +177,93 @@ fn remove_managed_config_files_tolerates_partial_existence() {
             "{f} must be gone after the purge (absent ones tolerated, dir squat removed)"
         );
     }
+}
+
+/// Issue #7: telemetry-*enabling* keys are stripped from unsigned server
+/// content; disabling values and unrelated settings survive.
+#[test]
+fn strip_telemetry_enables_removes_only_enables() {
+    // Enabling values are removed.
+    let out = strip_telemetry_enables(
+        "[cli]\ntheme = \"dark\"\n\
+         [features]\ntelemetry = true\nfeedback = true\nweb_fetch = false\n\
+         [telemetry]\ntrace_upload = true\n",
+    );
+    let parsed: toml::Value = toml::from_str(&out).unwrap();
+    assert!(
+        parsed.get("features").and_then(|f| f.get("telemetry")).is_none(),
+        "telemetry enable stripped"
+    );
+    assert!(
+        parsed.get("features").and_then(|f| f.get("feedback")).is_none(),
+        "feedback enable stripped"
+    );
+    assert!(
+        parsed
+            .get("telemetry")
+            .and_then(|t| t.get("trace_upload"))
+            .is_none(),
+        "trace_upload enable stripped"
+    );
+    // Unrelated settings survive.
+    assert_eq!(
+        parsed.get("cli").and_then(|c| c.get("theme")).and_then(|v| v.as_str()),
+        Some("dark")
+    );
+    assert_eq!(
+        parsed.get("features").and_then(|f| f.get("web_fetch")).and_then(|v| v.as_bool()),
+        Some(false)
+    );
+
+    // A managed *disable* (kill switch) is preserved.
+    let kept = strip_telemetry_enables(
+        "[features]\ntelemetry = false\n[telemetry]\ntrace_upload = false\n",
+    );
+    let parsed: toml::Value = toml::from_str(&kept).unwrap();
+    assert_eq!(
+        parsed.get("features").and_then(|f| f.get("telemetry")).and_then(|v| v.as_bool()),
+        Some(false),
+        "a managed telemetry disable must survive"
+    );
+    assert_eq!(
+        parsed.get("telemetry").and_then(|t| t.get("trace_upload")).and_then(|v| v.as_bool()),
+        Some(false),
+        "a managed trace_upload disable must survive"
+    );
+
+    // A string mode like "session_metrics" also counts as an enable.
+    let sm = strip_telemetry_enables("[features]\ntelemetry = \"session_metrics\"\n");
+    let parsed: toml::Value = toml::from_str(&sm).unwrap();
+    assert!(
+        parsed.get("features").and_then(|f| f.get("telemetry")).is_none(),
+        "session_metrics is still telemetry — stripped"
+    );
+}
+
+/// Unsigned server content routed through the apply path (`sanitize = true`)
+/// lands on disk without the telemetry enable.
+#[test]
+fn apply_sanitizes_unsigned_telemetry_enable() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let body = ManagedConfigResponse {
+        deployment_id: None,
+        team_id: None,
+        managed_config: Some("[features]\ntelemetry = true\ncli = \"x\"\n".into()),
+        requirements: Some("[features]\ntelemetry = true\n".into()),
+        ..Default::default()
+    };
+    assert!(apply_managed_config(home, &body, true).unwrap());
+    let mc = std::fs::read_to_string(home.join("managed_config.toml")).unwrap();
+    assert!(
+        !mc.contains("telemetry"),
+        "unsigned managed_config telemetry enable must not reach disk: {mc:?}"
+    );
+    let req = std::fs::read_to_string(home.join("requirements.toml")).unwrap();
+    assert!(
+        !req.contains("telemetry"),
+        "unsigned requirements telemetry pin must not reach disk: {req:?}"
+    );
 }
 
 /// The transport-interruption variant must be retryable (so the loop escapes a
